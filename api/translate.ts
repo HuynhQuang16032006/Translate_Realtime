@@ -1,7 +1,5 @@
-import { GoogleGenAI, Type } from '@google/genai';
-
 export const config = {
-  maxDuration: 60,
+  maxDuration: 30,
 };
 
 export default async function handler(req: any, res: any) {
@@ -35,27 +33,44 @@ export default async function handler(req: any, res: any) {
     });
   }
 
-  // Diagnostic GET to test generateContent with models
+  // Diagnostic GET to test candidate models with fast 4s timeout
   if (req.method === 'GET') {
     try {
-      const ai = new GoogleGenAI({ apiKey });
-      const testResults: Record<string, any> = {};
-      const testModels = ['gemini-3.7-flash', 'gemini-flash-latest', 'gemini-3.5-flash', 'gemini-3.8-flash'];
+      const testModels = [
+        'gemini-2.5-flash',
+        'gemini-flash-latest',
+        'gemini-3.7-flash',
+        'gemini-3.8-flash',
+        'gemini-3.5-flash',
+      ];
+      const results: Record<string, any> = {};
 
       for (const m of testModels) {
         try {
-          const resp = await ai.models.generateContent({
-            model: m,
-            contents: 'Xin chào, trả lời ngắn gọn: OK',
-          });
-          testResults[m] = { success: true, text: resp.text };
-          break; // Stop at first successful model!
-        } catch (err: any) {
-          testResults[m] = { success: false, error: err?.message || String(err) };
+          const resp = await fetch(
+            `https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent?key=${apiKey}`,
+            {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                contents: [{ parts: [{ text: 'Trả lời đúng 1 từ: OK' }] }],
+              }),
+              signal: AbortSignal.timeout(4000),
+            }
+          );
+          const json = (await resp.json()) as any;
+          results[m] = {
+            status: resp.status,
+            ok: resp.ok,
+            text: json.candidates?.[0]?.content?.parts?.[0]?.text || json,
+          };
+          if (resp.ok) break; // Found working model
+        } catch (e: any) {
+          results[m] = { error: e.message };
         }
       }
 
-      return sendResponse(200, { testResults });
+      return sendResponse(200, { results });
     } catch (e: any) {
       return sendResponse(500, { error: e.message });
     }
@@ -72,9 +87,7 @@ export default async function handler(req: any, res: any) {
       return sendResponse(400, { error: 'Missing audioBase64 payload.' });
     }
 
-    const ai = new GoogleGenAI({ apiKey });
-
-    // Sanitize mimeType for Gemini API
+    // Sanitize mimeType for Gemini REST API
     let cleanMimeType = mimeType || 'audio/webm';
     if (cleanMimeType.includes(';')) {
       cleanMimeType = cleanMimeType.split(';')[0].trim();
@@ -87,71 +100,83 @@ Nhiệm vụ:
 3. Dịch chuẩn xác sang cả 3 ngôn ngữ: Tiếng Việt (vi), Tiếng Trung (zh) và Tiếng Anh (en).
 4. QUY TẮC NHẬN DIỆN:
    - Nếu nghe thấy bất kỳ từ ngữ, câu nói nào dù ngắn (ví dụ: "chào bạn", "giá này bao nhiêu", "你好", "hello", "ok", "máy móc", "hợp đồng"...), bạn BẮT BUỘC nhận diện, dịch và đặt "is_noise_or_empty": false.
-   - CHỈ đặt "is_noise_or_empty": true nếu đoạn âm thanh HOÀN TOÀN KHÔNG CÓ TIẾNG NGƯỜI NÓI (chỉ là tiếng thở dài, tiếng im lặng hoặc tiếng gõ kim loại vô nghĩa).`;
+   - CHỈ đặt "is_noise_or_empty": true nếu đoạn âm thanh HOÀN TOÀN KHÔNG CÓ TIẾNG NGƯỜI NÓI (chỉ là tiếng thở dài, tiếng im lặng hoặc tiếng gõ kim loại vô nghĩa).
+5. Định dạng JSON BẮT BUỘC:
+{
+  "is_noise_or_empty": false,
+  "detected_lang": "vi",
+  "original_text": "câu gốc người đó nói",
+  "translations": {
+    "vi": "bản dịch tiếng Việt",
+    "zh": "bản dịch tiếng Trung",
+    "en": "bản dịch tiếng Anh"
+  }
+}`;
 
-    // Active Gemini models in Google AI Studio
     const candidateModels = [
+      'gemini-2.5-flash',
+      'gemini-flash-latest',
       'gemini-3.7-flash',
       'gemini-3.8-flash',
       'gemini-3.5-flash',
-      'gemini-3.5-flash-lite',
     ];
-    const modelErrors: Record<string, string> = {};
-    let responseText = '';
+
+    const payload = {
+      system_instruction: {
+        parts: [{ text: systemInstruction }],
+      },
+      contents: [
+        {
+          role: 'user',
+          parts: textOnly
+            ? [
+                {
+                  text: `Dịch câu thoại sau sang 3 ngôn ngữ theo đúng định dạng JSON: "${textOnly}"`,
+                },
+              ]
+            : [
+                {
+                  inline_data: {
+                    mime_type: cleanMimeType,
+                    data: audioBase64,
+                  },
+                },
+                {
+                  text: 'Hãy nhận diện giọng nói trong đoạn ghi âm và dịch sang 3 ngôn ngữ theo đúng định dạng JSON.',
+                },
+              ],
+        },
+      ],
+      generation_config: {
+        response_mime_type: 'application/json',
+        temperature: 0.1,
+      },
+    };
+
+    let responseJsonText = '';
+    const modelErrors: Record<string, any> = {};
 
     for (const modelName of candidateModels) {
       try {
-        const response = await ai.models.generateContent({
-          model: modelName,
-          contents: [
-            {
-              role: 'user',
-              parts: textOnly
-                ? [
-                    {
-                      text: `Dịch câu sau sang 3 ngôn ngữ theo định dạng JSON: "${textOnly}"`,
-                    },
-                  ]
-                : [
-                    {
-                      inlineData: {
-                        mimeType: cleanMimeType,
-                        data: audioBase64,
-                      },
-                    },
-                    {
-                      text: 'Hãy nhận diện giọng nói trong đoạn ghi âm và dịch sang 3 ngôn ngữ theo đúng định dạng JSON.',
-                    },
-                  ],
-            },
-          ],
-          config: {
-            systemInstruction,
-            responseMimeType: 'application/json',
-            responseSchema: {
-              type: Type.OBJECT,
-              properties: {
-                is_noise_or_empty: { type: Type.BOOLEAN },
-                detected_lang: { type: Type.STRING, enum: ['vi', 'zh', 'en'] },
-                original_text: { type: Type.STRING },
-                translations: {
-                  type: Type.OBJECT,
-                  properties: {
-                    vi: { type: Type.STRING },
-                    zh: { type: Type.STRING },
-                    en: { type: Type.STRING },
-                  },
-                  required: ['vi', 'zh', 'en'],
-                },
-              },
-              required: ['is_noise_or_empty', 'detected_lang', 'original_text', 'translations'],
-            },
-            temperature: 0.1,
-          },
-        });
+        const geminiResp = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+            signal: AbortSignal.timeout(8000), // 8s timeout per model
+          }
+        );
 
-        if (response && response.text) {
-          responseText = response.text;
+        const data = (await geminiResp.json()) as any;
+        if (!geminiResp.ok) {
+          modelErrors[modelName] = data?.error?.message || data?.error || `HTTP ${geminiResp.status}`;
+          continue; // Try next model immediately
+        }
+
+        const candidateText = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (candidateText) {
+          responseJsonText = candidateText;
           break; // Succeeded!
         }
       } catch (err: any) {
@@ -159,14 +184,22 @@ Nhiệm vụ:
       }
     }
 
-    if (!responseText) {
+    if (!responseJsonText) {
       return sendResponse(500, {
         error: 'Tất cả các model AI đều thất bại',
         modelErrors,
       });
     }
 
-    const parsed = JSON.parse(responseText);
+    // Clean markdown code fence if present
+    let cleaned = responseJsonText.trim();
+    if (cleaned.startsWith('```json')) {
+      cleaned = cleaned.replace(/^```json\s*/, '').replace(/\s*```$/, '');
+    } else if (cleaned.startsWith('```')) {
+      cleaned = cleaned.replace(/^```\s*/, '').replace(/\s*```$/, '');
+    }
+
+    const parsed = JSON.parse(cleaned);
     return sendResponse(200, parsed);
   } catch (error: any) {
     console.error('Lỗi phiên dịch Gemini API:', error);
