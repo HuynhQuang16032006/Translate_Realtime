@@ -125,6 +125,11 @@ export const App: React.FC = () => {
 
   // Handle incoming translation from MQTT
   const handleIncomingTranslation = useCallback((msg: TranslationMessage) => {
+    // If the message is from myself, it was already handled locally
+    if (msg.senderId === userRef.current.id) {
+      return;
+    }
+
     setMessages((prev) => {
       // Deduplicate by message ID
       if (prev.some((m) => m.id === msg.id)) return prev;
@@ -168,7 +173,7 @@ export const App: React.FC = () => {
     }
   }, []);
 
-  // Process recorded audio through Gemini 2.5 Flash Backend
+  // Process recorded audio through Gemini Backend
   const processAndTranslateAudio = async (recordResult: AudioRecordResult) => {
     setIsProcessing(true);
     try {
@@ -211,10 +216,27 @@ export const App: React.FC = () => {
         timestamp: Date.now(),
       };
 
-      // Add to local state
+      // 1. Add to local state (appears on right side like Messenger)
       setMessages((prev) => [...prev, newMsg]);
 
-      // Broadcast to room via MQTT so other devices can hear and read immediately
+      // 2. Trigger Floating Live Speech Popup immediately for the speaker
+      const currentDeviceLang = userRef.current.lang;
+      const speakerTranslated = newMsg.translations[currentDeviceLang] || newMsg.originalText;
+      if (speakerTranslated) {
+        if (popupTimerRef.current) clearTimeout(popupTimerRef.current);
+        setLivePopup({
+          isVisible: true,
+          speakerName: newMsg.senderName,
+          translatedText: speakerTranslated,
+          originalText: newMsg.originalText,
+        });
+
+        popupTimerRef.current = setTimeout(() => {
+          setLivePopup((prev) => ({ ...prev, isVisible: false }));
+        }, 6000);
+      }
+
+      // 3. Broadcast to room via MQTT so other devices can hear and read immediately
       if (mqttServiceRef.current) {
         mqttServiceRef.current.broadcastTranslation(newMsg);
       }
