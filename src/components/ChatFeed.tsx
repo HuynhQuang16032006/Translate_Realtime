@@ -145,17 +145,17 @@ export const ChatFeed: React.FC<ChatFeedProps> = ({
                       {isMe && onDeleteMessage && (
                         <button
                           onClick={() => onDeleteMessage(msg.id)}
-                          title="Thu hồi / Xóa câu này nếu AI nghe sai"
+                          title={t('chat_unsend_tooltip', currentLang)}
                           className="p-1 px-1.5 rounded-lg hover:bg-rose-600/30 text-rose-300 hover:text-white transition flex items-center gap-1 text-[10px]"
                         >
                           <Trash2 className="w-3 h-3" />
-                          <span>Thu hồi</span>
+                          <span>{t('chat_unsend_btn', currentLang)}</span>
                         </button>
                       )}
 
                       <button
                         onClick={() => onPlayAudio(translatedText, currentLang)}
-                        title="Bấm để nghe đọc lại câu thoại"
+                        title={t('chat_speak_tooltip', currentLang)}
                         className={`p-1 px-1.5 rounded-lg transition flex items-center gap-1 text-[11px] font-medium ${
                           isMe
                             ? 'hover:bg-blue-700/70 text-blue-100'

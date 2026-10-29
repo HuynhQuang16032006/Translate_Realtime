@@ -57,6 +57,9 @@ export const translations = {
     chat_original_prefix: 'Gốc:',
     chat_speak_btn: 'Phát âm',
     chat_speaking_btn: 'Đang đọc...',
+    chat_unsend_btn: 'Thu hồi',
+    chat_unsend_tooltip: 'Thu hồi / Xóa câu này nếu AI nghe sai',
+    chat_speak_tooltip: 'Bấm để nghe đọc lại câu thoại',
 
     // Audio Controls
     ptt_idle: 'Bấm để nói (Click to Speak)',
@@ -68,6 +71,20 @@ export const translations = {
     vad_idle_title: 'Rảnh tay thông minh (Auto VAD)',
     vad_threshold_info: 'Ngưỡng nhạy: {db} dB • Đưa máy sát miệng để kích hoạt',
     vad_calibrate_btn: 'Cân chỉnh',
+    audio_recognizing: 'Đang nhận diện:',
+    audio_listening: 'Đang lắng nghe giọng nói của bạn...',
+    audio_edit_btn: 'Sửa câu',
+    audio_edit_tooltip: 'Chuyển câu này vào ô nhập để sửa trước khi gửi',
+    audio_cancel_btn: 'Hủy',
+    audio_cancel_tooltip: 'Hủy bỏ, không gửi câu này',
+    audio_input_placeholder: 'Nhập tin nhắn để dịch tức thì...',
+    audio_send_btn: 'Gửi',
+    audio_send_tooltip: 'Gửi tin nhắn dịch',
+    audio_click_to_speak: 'Bấm để nói',
+    audio_stop_and_translate: 'Dừng & Dịch',
+    audio_stop_and_translate_sec: '{sec}s • Dừng & Dịch',
+    audio_mic_busy: 'Đang bận',
+    audio_vad_sensitivity_tooltip: 'Độ nhạy Micro VAD ({db} dB)',
 
     // QR Modal
     qr_title: 'Mã QR Tham gia Phòng',
@@ -155,6 +172,9 @@ export const translations = {
     chat_original_prefix: '原文:',
     chat_speak_btn: '朗读',
     chat_speaking_btn: '正在朗读...',
+    chat_unsend_btn: '撤回',
+    chat_unsend_tooltip: '撤回 / 删除此条（如识别有误）',
+    chat_speak_tooltip: '点击朗读此消息',
 
     // Audio Controls
     ptt_idle: '点击开始发言',
@@ -166,6 +186,20 @@ export const translations = {
     vad_idle_title: '智能自由拾音 (Auto VAD)',
     vad_threshold_info: '灵敏度: {db} dB • 靠近嘴边说话即触发',
     vad_calibrate_btn: '校准环境',
+    audio_recognizing: '正在识别:',
+    audio_listening: '正在聆听您的声音...',
+    audio_edit_btn: '修改文字',
+    audio_edit_tooltip: '填入下方输入框，修改后再发送',
+    audio_cancel_btn: '取消',
+    audio_cancel_tooltip: '取消录音，不发送此句',
+    audio_input_placeholder: '输入消息即时翻译...',
+    audio_send_btn: '发送',
+    audio_send_tooltip: '发送并翻译',
+    audio_click_to_speak: '点击说话',
+    audio_stop_and_translate: '停止并翻译',
+    audio_stop_and_translate_sec: '{sec}秒 • 停止并翻译',
+    audio_mic_busy: '占用中',
+    audio_vad_sensitivity_tooltip: 'VAD 麦克风灵敏度 ({db} dB)',
 
     // QR Modal
     qr_title: '扫码加入现场同传房间',
@@ -253,6 +287,9 @@ export const translations = {
     chat_original_prefix: 'Original:',
     chat_speak_btn: 'Listen',
     chat_speaking_btn: 'Reading...',
+    chat_unsend_btn: 'Unsend',
+    chat_unsend_tooltip: 'Unsend / Delete message (if AI misheard)',
+    chat_speak_tooltip: 'Click to read aloud',
 
     // Audio Controls
     ptt_idle: 'Click to Speak',
@@ -264,6 +301,20 @@ export const translations = {
     vad_idle_title: 'Smart Hands-free (Auto VAD)',
     vad_threshold_info: 'Sensitivity: {db} dB • Bring near mouth to trigger',
     vad_calibrate_btn: 'Calibrate',
+    audio_recognizing: 'Recognizing:',
+    audio_listening: 'Listening to your voice...',
+    audio_edit_btn: 'Edit text',
+    audio_edit_tooltip: 'Fill into input to edit before sending',
+    audio_cancel_btn: 'Cancel',
+    audio_cancel_tooltip: 'Cancel recording, do not send',
+    audio_input_placeholder: 'Type a message to translate...',
+    audio_send_btn: 'Send',
+    audio_send_tooltip: 'Send and translate',
+    audio_click_to_speak: 'Tap to speak',
+    audio_stop_and_translate: 'Stop & Translate',
+    audio_stop_and_translate_sec: '{sec}s • Stop & Translate',
+    audio_mic_busy: 'Busy',
+    audio_vad_sensitivity_tooltip: 'VAD Mic Sensitivity ({db} dB)',
 
     // QR Modal
     qr_title: 'Scan QR to Join Room',

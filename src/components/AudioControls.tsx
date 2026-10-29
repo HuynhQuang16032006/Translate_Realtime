@@ -83,11 +83,11 @@ export const AudioControls: React.FC<AudioControlsProps> = ({
               <span className="text-slate-300 truncate">
                 {liveTranscript ? (
                   <>
-                    <span className="text-rose-300 font-semibold mr-1.5">Đang nhận diện:</span>
+                    <span className="text-rose-300 font-semibold mr-1.5">{t('audio_recognizing', currentLang)}</span>
                     <span className="text-white">"{liveTranscript}"</span>
                   </>
                 ) : (
-                  <span className="text-slate-400 italic">Đang lắng nghe giọng nói của bạn...</span>
+                  <span className="text-slate-400 italic">{t('audio_listening', currentLang)}</span>
                 )}
               </span>
             </div>
@@ -98,20 +98,20 @@ export const AudioControls: React.FC<AudioControlsProps> = ({
                 <button
                   type="button"
                   onClick={handleEditLiveTranscript}
-                  title="Chuyển câu này vào ô nhập để sửa trước khi gửi"
+                  title={t('audio_edit_tooltip', currentLang)}
                   className="px-2 py-0.5 bg-blue-600/50 hover:bg-blue-600 text-blue-200 hover:text-white rounded-lg text-[11px] font-medium transition"
                 >
-                  Sửa câu
+                  {t('audio_edit_btn', currentLang)}
                 </button>
               )}
               {onCancelRecord && (
                 <button
                   type="button"
                   onClick={onCancelRecord}
-                  title="Hủy bỏ, không gửi câu này"
+                  title={t('audio_cancel_tooltip', currentLang)}
                   className="px-2 py-0.5 bg-rose-900/60 hover:bg-rose-700 text-rose-300 hover:text-white rounded-lg text-[11px] font-medium transition"
                 >
-                  Hủy
+                  {t('audio_cancel_btn', currentLang)}
                 </button>
               )}
             </div>
@@ -128,13 +128,7 @@ export const AudioControls: React.FC<AudioControlsProps> = ({
               onChange={(e) => setInputText(e.target.value)}
               onKeyDown={handleKeyDown}
               disabled={isProcessing}
-              placeholder={
-                currentLang === 'vi'
-                  ? 'Nhập tin nhắn để dịch tức thì...'
-                  : currentLang === 'zh'
-                  ? '输入消息即时翻译...'
-                  : 'Type a message to translate...'
-              }
+              placeholder={t('audio_input_placeholder', currentLang)}
               className="w-full px-4 py-3 bg-slate-800/90 border border-slate-700/80 rounded-2xl text-slate-100 placeholder-slate-500 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/60 focus:border-transparent transition"
             />
           </div>
@@ -144,7 +138,7 @@ export const AudioControls: React.FC<AudioControlsProps> = ({
             <button
               onClick={handleSend}
               disabled={isProcessing}
-              title="Gửi tin nhắn dịch"
+              title={t('audio_send_tooltip', currentLang)}
               className="p-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white rounded-2xl shadow-lg shadow-blue-500/25 transition active:scale-95 shrink-0"
             >
               <Send className="w-5 h-5" />
@@ -162,7 +156,7 @@ export const AudioControls: React.FC<AudioControlsProps> = ({
                   onStartManualRecord();
                 }
               }}
-              title={isRecording ? 'Bấm để Dừng & Dịch' : 'Bấm để Bắt đầu nói'}
+              title={isRecording ? t('audio_stop_and_translate', currentLang) : t('audio_click_to_speak', currentLang)}
               className={`px-4 sm:px-6 py-3 rounded-2xl font-bold text-xs sm:text-sm transition-all shadow-lg flex items-center justify-center gap-2 select-none active:scale-[0.98] shrink-0 ${
                 isLockedByOther
                   ? 'bg-slate-800 text-slate-500 border border-slate-700 cursor-not-allowed'
@@ -176,7 +170,7 @@ export const AudioControls: React.FC<AudioControlsProps> = ({
               {isLockedByOther ? (
                 <>
                   <MicOff className="w-4 h-4 text-slate-500" />
-                  <span className="hidden sm:inline">{lockState.speakerName || 'Đang bận'}</span>
+                  <span className="hidden sm:inline">{lockState.speakerName || t('audio_mic_busy', currentLang)}</span>
                 </>
               ) : isProcessing ? (
                 <>
@@ -186,12 +180,12 @@ export const AudioControls: React.FC<AudioControlsProps> = ({
               ) : isRecording ? (
                 <>
                   <Square className="w-4 h-4 fill-current animate-bounce" />
-                  <span>{recordDuration}s • Dừng & Dịch</span>
+                  <span>{t('audio_stop_and_translate_sec', currentLang, { sec: recordDuration })}</span>
                 </>
               ) : (
                 <>
                   <Mic className="w-4 h-4" />
-                  <span>Bấm để nói</span>
+                  <span>{t('audio_click_to_speak', currentLang)}</span>
                 </>
               )}
             </button>
@@ -199,7 +193,7 @@ export const AudioControls: React.FC<AudioControlsProps> = ({
             <button
               onClick={onOpenCalibration}
               className="p-3 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-blue-400 rounded-2xl transition shrink-0"
-              title={`Độ nhạy Micro VAD (${vadThresholdDb} dB)`}
+              title={t('audio_vad_sensitivity_tooltip', currentLang, { db: vadThresholdDb })}
             >
               <Sliders className="w-5 h-5" />
             </button>
