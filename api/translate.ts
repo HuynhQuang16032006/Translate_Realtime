@@ -7,7 +7,7 @@ async function freeTranslate(text: string, targetLang: string): Promise<string> 
   try {
     const code = targetLang === 'zh' ? 'zh-CN' : targetLang === 'en' ? 'en' : 'vi';
     const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=${code}&dt=t&q=${encodeURIComponent(text)}`;
-    const resp = await fetch(url, { signal: AbortSignal.timeout(3000) });
+    const resp = await fetch(url, { signal: AbortSignal.timeout(4000) });
     const data = (await resp.json()) as any;
     return data[0]?.map((s: any) => s[0]).join('') || text;
   } catch (e) {
@@ -39,7 +39,8 @@ export default async function handler(req: any, res: any) {
     return res.end(JSON.stringify(data));
   };
 
-  const apiKey = process.env.GEMINI_API_KEY;
+  const { audioBase64, mimeType, speakerLang, textOnly, clientTranscript, userApiKey } = req.body || {};
+  const apiKey = (userApiKey || process.env.GEMINI_API_KEY || '').trim();
 
   // Diagnostic GET
   if (req.method === 'GET') {
@@ -55,7 +56,6 @@ export default async function handler(req: any, res: any) {
   }
 
   try {
-    const { audioBase64, mimeType, speakerLang, textOnly, clientTranscript } = req.body || {};
     const textToTranslate = (textOnly || clientTranscript || '').trim();
 
     // Sanitize mimeType for Gemini REST API
@@ -64,7 +64,7 @@ export default async function handler(req: any, res: any) {
       cleanMimeType = cleanMimeType.split(';')[0].trim();
     }
 
-    // SCENARIO 1: We have text transcript (from client speech recognition or textOnly)
+    // SCENARIO 1: We have text transcript (from client speech recognition or textOnly input)
     if (textToTranslate) {
       // Step A: Attempt fast Gemini translation if API key is present
       if (apiKey) {
@@ -95,7 +95,7 @@ export default async function handler(req: any, res: any) {
                 contents: [{ role: 'user', parts: [{ text: textToTranslate }] }],
                 generation_config: { response_mime_type: 'application/json', temperature: 0.1 },
               }),
-              signal: AbortSignal.timeout(5000),
+              signal: AbortSignal.timeout(4000),
             }
           );
 
@@ -135,12 +135,12 @@ export default async function handler(req: any, res: any) {
 
     // SCENARIO 2: Pure audioBase64 without client transcript
     if (!audioBase64) {
-      return sendResponse(400, { error: 'Missing audioBase64 payload.' });
+      return sendResponse(400, { error: 'Không nhận được âm thanh hoặc đoạn văn bản để dịch.' });
     }
 
     if (!apiKey) {
       return sendResponse(500, {
-        error: 'GEMINI_API_KEY chưa được cấu hình. Vui lòng thêm biến môi trường trên Vercel hoặc file .env',
+        error: 'Chưa cấu hình GEMINI_API_KEY. Vui lòng bấm vào biểu tượng Cài đặt để thêm khóa API.',
       });
     }
 
@@ -152,7 +152,7 @@ Nhiệm vụ:
 4. QUY TẮC:
    - Nếu có tiếng người nói, đặt "is_noise_or_empty": false.
    - CHỈ đặt "is_noise_or_empty": true nếu đoạn âm thanh hoàn toàn im lặng hoặc tiếng gõ kim loại vô nghĩa.
-5. Định dạng JSON:
+5. Định dạng JSON BẮT BUỘC:
 {
   "is_noise_or_empty": false,
   "detected_lang": "vi",
@@ -167,7 +167,6 @@ Nhiệm vụ:
     const candidateModels = [
       'gemini-3.5-flash',
       'gemini-3.5-flash-lite',
-      'gemini-3.8-flash',
     ];
 
     const payload = {
@@ -197,6 +196,7 @@ Nhiệm vụ:
     };
 
     let responseJsonText = '';
+    let isQuotaExceeded = false;
     const modelErrors: Record<string, any> = {};
 
     for (const modelName of candidateModels) {
@@ -207,13 +207,17 @@ Nhiệm vụ:
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload),
-            signal: AbortSignal.timeout(7000),
+            signal: AbortSignal.timeout(12000), // 12s timeout for multimodal audio
           }
         );
 
         const data = (await geminiResp.json()) as any;
         if (!geminiResp.ok) {
-          modelErrors[modelName] = data?.error?.message || data?.error || `HTTP ${geminiResp.status}`;
+          const errMsg = data?.error?.message || data?.error || `HTTP ${geminiResp.status}`;
+          modelErrors[modelName] = errMsg;
+          if (geminiResp.status === 429 || errMsg.includes('Quota exceeded') || errMsg.includes('free_tier_requests')) {
+            isQuotaExceeded = true;
+          }
           continue;
         }
 
@@ -228,8 +232,15 @@ Nhiệm vụ:
     }
 
     if (!responseJsonText) {
+      if (isQuotaExceeded) {
+        return sendResponse(429, {
+          error: 'Khóa Gemini API miễn phí đã hết hạn mức 20 câu/ngày của Google. Hãy dùng khung gõ chữ bên dưới (không giới hạn lượt) hoặc bấm Cài đặt để thêm API Key mới.',
+          modelErrors,
+        });
+      }
+
       return sendResponse(500, {
-        error: 'Tất cả các model AI đều thất bại',
+        error: 'AI chưa nhận diện được âm thanh. Hãy nói to hơn hoặc gõ trực tiếp vào ô nhắn tin bên dưới.',
         modelErrors,
       });
     }

@@ -16,6 +16,7 @@ import { QrModal } from './components/QrModal';
 import { CalibrationModal } from './components/CalibrationModal';
 import { JoinRoomScreen } from './components/JoinRoomScreen';
 import { LiveSpeechPopup } from './components/LiveSpeechPopup';
+import { ApiKeyModal } from './components/ApiKeyModal';
 
 export const App: React.FC = () => {
   // Session & User State
@@ -79,6 +80,17 @@ export const App: React.FC = () => {
   // Modals
   const [isQrOpen, setIsQrOpen] = useState<boolean>(false);
   const [isCalibrationOpen, setIsCalibrationOpen] = useState<boolean>(false);
+  const [isApiKeyOpen, setIsApiKeyOpen] = useState<boolean>(false);
+  const [customApiKey, setCustomApiKey] = useState<string>(() => {
+    return typeof window !== 'undefined' ? localStorage.getItem('expotrans_gemini_api_key') || '' : '';
+  });
+  const [liveTranscript, setLiveTranscript] = useState<string>('');
+
+  useEffect(() => {
+    speechRecognitionHelper.setUpdateCallback((text) => {
+      setLiveTranscript(text);
+    });
+  }, []);
 
   // Service References
   const mediaStreamRef = useRef<MediaStream | null>(null);
@@ -189,6 +201,7 @@ export const App: React.FC = () => {
           mimeType: recordResult?.mimeType || 'audio/webm',
           speakerLang: userRef.current.lang,
           clientTranscript: clientTranscript || '',
+          userApiKey: customApiKey,
         }),
       });
 
@@ -367,10 +380,17 @@ export const App: React.FC = () => {
     if (!acquired) return;
 
     if (mediaStreamRef.current && audioRecorderRef.current) {
+      setLiveTranscript('');
       audioRecorderRef.current.start(mediaStreamRef.current);
       speechRecognitionHelper.start(userRef.current.lang);
       setIsRecording(true);
     }
+  };
+
+  // Direct Text Message Send (Instant Messenger-style translation)
+  const handleSendTextMessage = async (text: string) => {
+    if (!text.trim() || isProcessing) return;
+    await processAndTranslateAudio(null, text.trim());
   };
 
   // Manual Push-to-Talk (PTT) Stop
@@ -512,6 +532,7 @@ export const App: React.FC = () => {
         onAutoSpeakToggle={() => setAutoSpeak((prev) => !prev)}
         onOpenQr={() => setIsQrOpen(true)}
         onOpenCalibration={() => setIsCalibrationOpen(true)}
+        onOpenApiKey={() => setIsApiKeyOpen(true)}
         onLeaveRoom={handleLeaveRoom}
       />
 
@@ -536,7 +557,7 @@ export const App: React.FC = () => {
         speakingMessageId={speakingMessageId}
       />
 
-      {/* Bottom Audio Controller (PTT or VAD) */}
+      {/* Bottom Audio & Quick Text Controller (PTT or VAD) */}
       <AudioControls
         mode={operationMode}
         isRecording={isRecording}
@@ -546,8 +567,10 @@ export const App: React.FC = () => {
         currentLang={user.lang}
         onStartManualRecord={handleStartManualRecord}
         onStopManualRecord={handleStopManualRecord}
+        onSendText={handleSendTextMessage}
         onOpenCalibration={() => setIsCalibrationOpen(true)}
         vadThresholdDb={vadThresholdDb}
+        liveTranscript={liveTranscript}
       />
 
       {/* QR Code Modal for Onboarding Partners */}
@@ -566,6 +589,20 @@ export const App: React.FC = () => {
         currentLang={user.lang}
         onSaveThreshold={handleSaveThreshold}
         onRunAutoCalibrate={handleRunAutoCalibrate}
+      />
+
+      {/* Custom Gemini API Key Settings Modal */}
+      <ApiKeyModal
+        isOpen={isApiKeyOpen}
+        onClose={() => setIsApiKeyOpen(false)}
+        currentLang={user.lang}
+        savedKey={customApiKey}
+        onSaveKey={(key) => {
+          setCustomApiKey(key);
+          if (typeof window !== 'undefined') {
+            localStorage.setItem('expotrans_gemini_api_key', key);
+          }
+        }}
       />
     </div>
   );

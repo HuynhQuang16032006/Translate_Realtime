@@ -4,64 +4,81 @@ export class SpeechRecognitionService {
   private recognition: any = null;
   private currentTranscript: string = '';
   private isListening: boolean = false;
-
-  constructor() {
-    if (typeof window !== 'undefined') {
-      const SpeechRecognition =
-        (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-      if (SpeechRecognition) {
-        this.recognition = new SpeechRecognition();
-        this.recognition.continuous = true;
-        this.recognition.interimResults = true;
-        this.recognition.maxAlternatives = 1;
-
-        this.recognition.onresult = (event: any) => {
-          let final = '';
-          for (let i = event.resultIndex; i < event.results.length; ++i) {
-            if (event.results[i].isFinal) {
-              final += event.results[i][0].transcript;
-            } else {
-              // interim
-            }
-          }
-          if (final) {
-            this.currentTranscript += ' ' + final;
-          } else if (event.results[0]?.[0]?.transcript) {
-            this.currentTranscript = event.results[0][0].transcript;
-          }
-        };
-
-        this.recognition.onerror = (event: any) => {
-          // Ignore harmless speech recognition errors (like no-speech)
-          if (event.error !== 'no-speech') {
-            console.warn('SpeechRecognition warning:', event.error);
-          }
-        };
-      }
-    }
-  }
+  private onUpdateCallback: ((text: string) => void) | null = null;
 
   public isSupported(): boolean {
-    return !!this.recognition;
+    if (typeof window === 'undefined') return false;
+    return !!((window as any).SpeechRecognition || (window as any).webkitSpeechRecognition);
   }
 
-  public start(lang: Language): void {
-    if (!this.recognition) return;
-    this.currentTranscript = '';
-    this.isListening = true;
+  public setUpdateCallback(cb: ((text: string) => void) | null) {
+    this.onUpdateCallback = cb;
+  }
 
-    const langMap: Record<Language, string> = {
-      vi: 'vi-VN',
-      zh: 'zh-CN',
-      en: 'en-US',
-    };
+  public start(lang: Language): boolean {
+    if (typeof window === 'undefined') return false;
+    const SpeechRecognition =
+      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
 
-    this.recognition.lang = langMap[lang] || 'vi-VN';
+    if (!SpeechRecognition) {
+      console.warn('Web Speech API không được hỗ trợ trên trình duyệt này.');
+      return false;
+    }
 
+    // Always instantiate fresh instance to prevent browser session lockup
     try {
-      this.recognition.start();
-    } catch (e) {
-      // Already started or restarting
+      if (this.recognition) {
+        try {
+          this.recognition.abort();
+        } catch (e) {
+          // Ignore
+        }
+      }
+
+      this.currentTranscript = '';
+      this.isListening = true;
+
+      const recognition = new SpeechRecognition();
+      recognition.continuous = true;
+      recognition.interimResults = true;
+      recognition.maxAlternatives = 1;
+
+      const langMap: Record<Language, string> = {
+        vi: 'vi-VN',
+        zh: 'zh-CN',
+        en: 'en-US',
+      };
+      recognition.lang = langMap[lang] || 'vi-VN';
+
+      recognition.onresult = (event: any) => {
+        let str = '';
+        for (let i = 0; i < event.results.length; ++i) {
+          str += event.results[i][0].transcript + ' ';
+        }
+        this.currentTranscript = str.trim();
+        if (this.onUpdateCallback) {
+          this.onUpdateCallback(this.currentTranscript);
+        }
+      };
+
+      recognition.onerror = (event: any) => {
+        console.warn('SpeechRecognition event error:', event.error);
+        if (event.error === 'not-allowed') {
+          console.warn('Microphone permission denied for speech recognition.');
+        }
+      };
+
+      recognition.onend = () => {
+        this.isListening = false;
+      };
+
+      recognition.start();
+      this.recognition = recognition;
+      return true;
+    } catch (err) {
+      console.warn('Lỗi khởi động SpeechRecognition:', err);
+      this.isListening = false;
+      return false;
     }
   }
 
@@ -79,11 +96,15 @@ export class SpeechRecognitionService {
         // Ignore
       }
 
-      // Small delay to allow final onresult to fire
+      // Small delay to allow any pending audio buffers to finalize
       setTimeout(() => {
         resolve(this.currentTranscript.trim());
-      }, 150);
+      }, 200);
     });
+  }
+
+  public getCurrentTranscript(): string {
+    return this.currentTranscript.trim();
   }
 }
 

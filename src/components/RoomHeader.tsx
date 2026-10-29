@@ -1,5 +1,5 @@
 import React from 'react';
-import { QrCode, Volume2, VolumeX, Mic, Hand, Sliders, Wifi, WifiOff, LogOut } from 'lucide-react';
+import { QrCode, Volume2, VolumeX, Mic, Hand, Sliders, LogOut, Key, Wifi, WifiOff } from 'lucide-react';
 import type { ConnectionStatus, Language, OperationMode } from '../types';
 import { t } from '../locales/i18n';
 
@@ -14,6 +14,7 @@ interface RoomHeaderProps {
   onAutoSpeakToggle: () => void;
   onOpenQr: () => void;
   onOpenCalibration: () => void;
+  onOpenApiKey: () => void;
   onLeaveRoom: () => void;
 }
 
@@ -28,6 +29,7 @@ export const RoomHeader: React.FC<RoomHeaderProps> = ({
   onAutoSpeakToggle,
   onOpenQr,
   onOpenCalibration,
+  onOpenApiKey,
   onLeaveRoom,
 }) => {
   return (
@@ -158,6 +160,15 @@ export const RoomHeader: React.FC<RoomHeaderProps> = ({
           >
             <QrCode className="w-3.5 h-3.5" />
             <span>{t('btn_qr', currentLang)}</span>
+          </button>
+
+          {/* API Key Settings Button */}
+          <button
+            onClick={onOpenApiKey}
+            title="Cài đặt khóa Gemini API"
+            className="p-1.5 bg-slate-800 hover:bg-slate-700 text-amber-400 border border-slate-700 rounded-lg transition shrink-0"
+          >
+            <Key className="w-4 h-4" />
           </button>
 
           {/* Leave Room Button */}
