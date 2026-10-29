@@ -6,6 +6,7 @@ import type { AudioRecordResult } from './services/mediaRecorderHelper';
 import { MqttSyncService } from './services/mqttService';
 import { speechService } from './services/speechSynthesisService';
 import { wakeLockService } from './services/wakeLockService';
+import { speechRecognitionHelper } from './services/speechRecognitionService';
 import { WeChatDetector } from './components/WeChatDetector';
 import { RoomHeader } from './components/RoomHeader';
 import { LiveStatusBar } from './components/LiveStatusBar';
@@ -173,17 +174,21 @@ export const App: React.FC = () => {
     }
   }, []);
 
-  // Process recorded audio through Gemini Backend
-  const processAndTranslateAudio = async (recordResult: AudioRecordResult) => {
+  // Process recorded audio through Gemini / Fast Translation Backend
+  const processAndTranslateAudio = async (
+    recordResult: AudioRecordResult | null,
+    clientTranscript?: string
+  ) => {
     setIsProcessing(true);
     try {
       const response = await fetch('/api/translate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          audioBase64: recordResult.audioBase64,
-          mimeType: recordResult.mimeType,
+          audioBase64: recordResult?.audioBase64 || '',
+          mimeType: recordResult?.mimeType || 'audio/webm',
           speakerLang: userRef.current.lang,
+          clientTranscript: clientTranscript || '',
         }),
       });
 
@@ -196,7 +201,7 @@ export const App: React.FC = () => {
 
       const data = await response.json();
 
-      // If Gemini detected that the audio was just background noise or empty
+      // If audio was just background noise or empty
       if (data.is_noise_or_empty || !data.original_text?.trim()) {
         showErrorToast('AI không nghe rõ câu nói hoặc chỉ có tiếng ồn. Vui lòng nói to và rõ hơn.');
         return;
@@ -266,6 +271,7 @@ export const App: React.FC = () => {
 
     if (mediaStreamRef.current && audioRecorderRef.current) {
       audioRecorderRef.current.start(mediaStreamRef.current);
+      speechRecognitionHelper.start(userRef.current.lang);
       setIsRecording(true);
     }
   }, []);
@@ -277,9 +283,13 @@ export const App: React.FC = () => {
 
     setIsRecording(false);
     if (audioRecorderRef.current) {
-      const result = await audioRecorderRef.current.stop();
-      if (result) {
-        await processAndTranslateAudio(result);
+      const [recordResult, clientTranscript] = await Promise.all([
+        audioRecorderRef.current.stop(),
+        speechRecognitionHelper.stop(),
+      ]);
+
+      if (recordResult || clientTranscript) {
+        await processAndTranslateAudio(recordResult, clientTranscript);
       } else {
         mqttServiceRef.current?.broadcastUnlock();
       }
@@ -358,6 +368,7 @@ export const App: React.FC = () => {
 
     if (mediaStreamRef.current && audioRecorderRef.current) {
       audioRecorderRef.current.start(mediaStreamRef.current);
+      speechRecognitionHelper.start(userRef.current.lang);
       setIsRecording(true);
     }
   };
@@ -369,9 +380,13 @@ export const App: React.FC = () => {
 
     setIsRecording(false);
     if (audioRecorderRef.current) {
-      const result = await audioRecorderRef.current.stop();
-      if (result) {
-        await processAndTranslateAudio(result);
+      const [recordResult, clientTranscript] = await Promise.all([
+        audioRecorderRef.current.stop(),
+        speechRecognitionHelper.stop(),
+      ]);
+
+      if (recordResult || clientTranscript) {
+        await processAndTranslateAudio(recordResult, clientTranscript);
       } else {
         mqttServiceRef.current?.broadcastUnlock();
       }
