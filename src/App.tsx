@@ -186,25 +186,9 @@ export const App: React.FC = () => {
     }
   }, []);
 
-  // Ultra-low latency client direct translator (100ms response time)
-  const freeTranslateDirect = async (text: string, targetLang: string): Promise<string> => {
-    try {
-      // If client is in Chinese language mode, direct Google connection is blocked in mainland China.
-      // Immediately return empty to route through /api/translate proxy via Cloudflare with zero delay!
-      if (userRef.current.lang === 'zh') {
-        return '';
-      }
-      const code = targetLang === 'zh' ? 'zh-CN' : targetLang === 'en' ? 'en' : 'vi';
-      const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=${code}&dt=t&q=${encodeURIComponent(text)}`;
-      const resp = await fetch(url, { signal: AbortSignal.timeout(350) });
-      const data = (await resp.json()) as any;
-      return data[0]?.map((s: any) => s[0]).join('') || text;
-    } catch (e) {
-      return '';
-    }
-  };
-
-  // Process recorded audio through Ultra-Fast Translation Backend
+  // Process recorded audio through Cloudflare Relay Proxy (/api/translate)
+  // All devices (Vietnamese, English, Chinese) route through this relay first,
+  // ensuring 100% immunity to Great Firewall blocks even on Chinese domestic WiFi!
   const processAndTranslateAudio = async (
     recordResult: AudioRecordResult | null,
     clientTranscript?: string
@@ -213,61 +197,7 @@ export const App: React.FC = () => {
     try {
       const trimmedText = (clientTranscript || '').trim();
 
-      // OPTIMIZATION 1: Direct client-side neural translation (100ms latency)
-      if (trimmedText) {
-        try {
-          const [transVi, transZh, transEn] = await Promise.all([
-            userRef.current.lang === 'vi' ? Promise.resolve(trimmedText) : freeTranslateDirect(trimmedText, 'vi'),
-            userRef.current.lang === 'zh' ? Promise.resolve(trimmedText) : freeTranslateDirect(trimmedText, 'zh'),
-            userRef.current.lang === 'en' ? Promise.resolve(trimmedText) : freeTranslateDirect(trimmedText, 'en'),
-          ]);
-
-          if (transVi && transZh) {
-            const newMsg: TranslationMessage = {
-              id: `msg_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
-              senderId: userRef.current.id,
-              senderName: userRef.current.name,
-              detectedLang: userRef.current.lang,
-              originalText: trimmedText,
-              translations: {
-                vi: transVi,
-                zh: transZh,
-                en: transEn || trimmedText,
-              },
-              timestamp: Date.now(),
-            };
-
-            setMessages((prev) => [...prev, newMsg]);
-
-            if (mqttServiceRef.current) {
-              mqttServiceRef.current.broadcastTranslation(newMsg);
-            }
-
-            const currentDeviceLang = userRef.current.lang;
-            const speakerTranslated = newMsg.translations[currentDeviceLang] || newMsg.originalText;
-            if (speakerTranslated) {
-              if (popupTimerRef.current) clearTimeout(popupTimerRef.current);
-              setLivePopup({
-                isVisible: true,
-                speakerName: newMsg.senderName,
-                translatedText: speakerTranslated,
-                originalText: newMsg.originalText,
-              });
-              popupTimerRef.current = setTimeout(() => {
-                setLivePopup((prev) => ({ ...prev, isVisible: false }));
-              }, 6000);
-            }
-
-            setIsProcessing(false);
-            mqttServiceRef.current?.broadcastUnlock();
-            return;
-          }
-        } catch (e) {
-          // Direct fetch failed (e.g. GFW without VPN), seamlessly fallback to /api/translate
-        }
-      }
-
-      // OPTIMIZATION 2: Lightweight payload without heavy 500KB audioBase64 if text is present
+      // Lightweight payload: only send small text if available (50 bytes vs 500KB)
       const payload: any = {
         speakerLang: userRef.current.lang,
         clientTranscript: trimmedText,
@@ -279,6 +209,8 @@ export const App: React.FC = () => {
         payload.mimeType = recordResult.mimeType || 'audio/webm';
       }
 
+      // Always route through Cloudflare/Vercel relay proxy (/api/translate)
+      // This bypasses the Great Firewall of China for all devices on Chinese WiFi!
       const response = await fetch('/api/translate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
