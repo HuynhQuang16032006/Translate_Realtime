@@ -65,6 +65,16 @@ export const App: React.FC = () => {
   const [thresholdNormalized, setThresholdNormalized] = useState<number>(50);
   const [vadThresholdDb, setVadThresholdDb] = useState<number>(-38);
 
+  // Toast Error Alert State
+  const [toastError, setToastError] = useState<string | null>(null);
+
+  const showErrorToast = (msg: string) => {
+    setToastError(msg);
+    setTimeout(() => {
+      setToastError((prev) => (prev === msg ? null : prev));
+    }, 6000);
+  };
+
   // Modals
   const [isQrOpen, setIsQrOpen] = useState<boolean>(false);
   const [isCalibrationOpen, setIsCalibrationOpen] = useState<boolean>(false);
@@ -173,14 +183,17 @@ export const App: React.FC = () => {
       });
 
       if (!response.ok) {
-        throw new Error(`Lỗi máy chủ (${response.status})`);
+        const errJson = await response.json().catch(() => ({}));
+        const detailed = errJson.details || errJson.error || `Lỗi máy chủ (${response.status})`;
+        showErrorToast(`Lỗi dịch thuật: ${detailed}`);
+        return;
       }
 
       const data = await response.json();
 
-      // If Gemini detected that the audio was just background machinery noise or empty
+      // If Gemini detected that the audio was just background noise or empty
       if (data.is_noise_or_empty || !data.original_text?.trim()) {
-        console.log('Bỏ qua: Đoạn âm thanh là tiếng ồn hoặc im lặng.');
+        showErrorToast('AI không nghe rõ câu nói hoặc chỉ có tiếng ồn. Vui lòng nói to và rõ hơn.');
         return;
       }
 
@@ -205,8 +218,9 @@ export const App: React.FC = () => {
       if (mqttServiceRef.current) {
         mqttServiceRef.current.broadcastTranslation(newMsg);
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Lỗi phiên dịch audio:', err);
+      showErrorToast(`Lỗi kết nối: ${err?.message || 'Không thể gửi đoạn thu âm'}`);
     } finally {
       setIsProcessing(false);
       // Release Mutex Lock
@@ -423,6 +437,21 @@ export const App: React.FC = () => {
     <div className="flex flex-col h-screen bg-slate-950 text-slate-100 overflow-hidden select-none">
       {/* WeChat In-App Browser Warning & Overlay */}
       <WeChatDetector />
+
+      {/* Floating Toast Error Alert */}
+      {toastError && (
+        <div className="fixed top-14 left-1/2 -translate-x-1/2 z-50 w-[92%] max-w-md animate-in fade-in slide-in-from-top-2 duration-200">
+          <div className="bg-rose-950/95 border-2 border-rose-500/80 text-rose-100 text-xs sm:text-sm font-semibold p-3.5 rounded-2xl shadow-2xl flex items-center justify-between gap-3 backdrop-blur-xl ring-4 ring-rose-500/20">
+            <span className="leading-snug">⚠️ {toastError}</span>
+            <button
+              onClick={() => setToastError(null)}
+              className="text-rose-400 hover:text-white p-1 rounded-lg hover:bg-rose-900 transition shrink-0"
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Floating Live Speech Toast Popup */}
       <LiveSpeechPopup

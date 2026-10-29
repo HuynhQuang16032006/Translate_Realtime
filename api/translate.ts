@@ -53,8 +53,8 @@ Nhiệm vụ:
    - Nếu nghe thấy bất kỳ từ ngữ, câu nói nào dù ngắn (ví dụ: "chào bạn", "giá này bao nhiêu", "你好", "hello", "ok", "máy móc", "hợp đồng"...), bạn BẮT BUỘC nhận diện, dịch và đặt "is_noise_or_empty": false.
    - CHỈ đặt "is_noise_or_empty": true nếu đoạn âm thanh HOÀN TOÀN KHÔNG CÓ TIẾNG NGƯỜI NÓI (chỉ là tiếng thở dài, tiếng im lặng hoặc tiếng gõ kim loại vô nghĩa).`;
 
-    // Try candidate models
-    const candidateModels = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'];
+    // Try candidate models: Google API explicitly requires gemini-3.8-flash
+    const candidateModels = ['gemini-3.8-flash', 'gemini-3-flash', 'gemini-2.5-flash'];
     const modelErrors: Record<string, string> = {};
     let responseText = '';
 
