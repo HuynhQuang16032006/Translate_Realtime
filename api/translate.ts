@@ -91,69 +91,56 @@ Nhiệm vụ:
     let responseText = '';
 
     for (const modelName of candidateModels) {
-      // Allow up to 2 attempts per candidate model for temporary 503 rate limits
-      for (let attempt = 0; attempt < 2; attempt++) {
-        try {
-          const response = await ai.models.generateContent({
-            model: modelName,
-            contents: [
-              {
-                role: 'user',
-                parts: [
-                  {
-                    inlineData: {
-                      mimeType: cleanMimeType,
-                      data: audioBase64,
-                    },
-                  },
-                  {
-                    text: 'Hãy nhận diện giọng nói trong đoạn ghi âm và dịch sang 3 ngôn ngữ theo đúng định dạng JSON.',
-                  },
-                ],
-              },
-            ],
-            config: {
-              systemInstruction,
-              responseMimeType: 'application/json',
-              responseSchema: {
-                type: Type.OBJECT,
-                properties: {
-                  is_noise_or_empty: { type: Type.BOOLEAN },
-                  detected_lang: { type: Type.STRING, enum: ['vi', 'zh', 'en'] },
-                  original_text: { type: Type.STRING },
-                  translations: {
-                    type: Type.OBJECT,
-                    properties: {
-                      vi: { type: Type.STRING },
-                      zh: { type: Type.STRING },
-                      en: { type: Type.STRING },
-                    },
-                    required: ['vi', 'zh', 'en'],
+      try {
+        const response = await ai.models.generateContent({
+          model: modelName,
+          contents: [
+            {
+              role: 'user',
+              parts: [
+                {
+                  inlineData: {
+                    mimeType: cleanMimeType,
+                    data: audioBase64,
                   },
                 },
-                required: ['is_noise_or_empty', 'detected_lang', 'original_text', 'translations'],
-              },
-              temperature: 0.1,
+                {
+                  text: 'Hãy nhận diện giọng nói trong đoạn ghi âm và dịch sang 3 ngôn ngữ theo đúng định dạng JSON.',
+                },
+              ],
             },
-          });
+          ],
+          config: {
+            systemInstruction,
+            responseMimeType: 'application/json',
+            responseSchema: {
+              type: Type.OBJECT,
+              properties: {
+                is_noise_or_empty: { type: Type.BOOLEAN },
+                detected_lang: { type: Type.STRING, enum: ['vi', 'zh', 'en'] },
+                original_text: { type: Type.STRING },
+                translations: {
+                  type: Type.OBJECT,
+                  properties: {
+                    vi: { type: Type.STRING },
+                    zh: { type: Type.STRING },
+                    en: { type: Type.STRING },
+                  },
+                  required: ['vi', 'zh', 'en'],
+                },
+              },
+              required: ['is_noise_or_empty', 'detected_lang', 'original_text', 'translations'],
+            },
+            temperature: 0.1,
+          },
+        });
 
-          if (response && response.text) {
-            responseText = response.text;
-            break;
-          }
-        } catch (err: any) {
-          modelErrors[`${modelName}_attempt${attempt + 1}`] = err?.message || String(err);
-          // If 503 high demand, short delay before retry
-          if (attempt === 0 && (err?.message?.includes('503') || err?.message?.includes('high demand'))) {
-            await new Promise((r) => setTimeout(r, 600));
-            continue;
-          }
-          break; // Move to next model
+        if (response && response.text) {
+          responseText = response.text;
+          break; // Succeeded!
         }
-      }
-
-      if (responseText) {
-        break; // Successfully got response
+      } catch (err: any) {
+        modelErrors[modelName] = err?.message || String(err);
       }
     }
 
