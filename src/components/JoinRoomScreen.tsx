@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
-import { Globe, ArrowRight, Sparkles, ShieldCheck } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Globe, ArrowRight, Sparkles, ShieldCheck, CheckCircle2 } from 'lucide-react';
 import type { Language } from '../types';
+import { t } from '../locales/i18n';
 
 interface JoinRoomScreenProps {
   initialRoomId: string;
@@ -15,10 +16,16 @@ export const JoinRoomScreen: React.FC<JoinRoomScreenProps> = ({
   const [roomId, setRoomId] = useState(initialRoomId || '');
   const [selectedLang, setSelectedLang] = useState<Language>('vi');
 
+  // Detect URL parameter whenever initialRoomId changes
+  useEffect(() => {
+    if (initialRoomId) {
+      setRoomId(initialRoomId);
+    }
+  }, [initialRoomId]);
+
   const handleCreateNewRoom = () => {
-    // Generate secure random room ID with timestamp and nano-hash
-    const randomHash = Math.random().toString(36).substring(2, 10);
-    const newId = `expo-${randomHash}`;
+    const randomHash = Math.random().toString(36).substring(2, 9);
+    const newId = `room-${randomHash}`;
     setRoomId(newId);
   };
 
@@ -28,11 +35,13 @@ export const JoinRoomScreen: React.FC<JoinRoomScreenProps> = ({
 
     let finalRoom = roomId.trim();
     if (!finalRoom) {
-      finalRoom = `expo-${Math.random().toString(36).substring(2, 10)}`;
+      finalRoom = `room-${Math.random().toString(36).substring(2, 9)}`;
     }
 
     onJoin(userName.trim(), finalRoom, selectedLang);
   };
+
+  const isScannedRoom = Boolean(initialRoomId);
 
   return (
     <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-4 text-slate-100 safe-bottom safe-top">
@@ -46,34 +55,46 @@ export const JoinRoomScreen: React.FC<JoinRoomScreenProps> = ({
             <Globe className="w-6 h-6" />
           </div>
           <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-white">
-            ExpoTrans • 展会同传
+            {t('app_title', selectedLang)}
           </h1>
           <p className="text-xs text-slate-400 max-w-xs mx-auto">
-            Phòng phiên dịch trực tiếp đa thiết bị qua mã QR cho triển lãm máy móc Trung Quốc
+            {t('app_subtitle', selectedLang)}
           </p>
         </div>
+
+        {/* QR Scan Pre-filled Notice */}
+        {isScannedRoom && (
+          <div className="p-3 bg-emerald-500/10 border border-emerald-500/30 rounded-2xl flex items-center gap-2.5 text-xs text-emerald-300">
+            <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+            <div className="truncate">
+              <span className="font-semibold block">{t('joining_room_badge', selectedLang)}</span>
+              <span className="font-mono text-white text-[13px]">{roomId}</span>
+            </div>
+          </div>
+        )}
 
         {/* Join Form */}
         <form onSubmit={handleSubmit} className="space-y-4">
           {/* Display Name Input */}
           <div className="space-y-1.5 text-left">
             <label className="text-xs font-semibold text-slate-300">
-              Tên hiển thị của bạn / 您的姓名:
+              {t('your_name_label', selectedLang)}
             </label>
             <input
               type="text"
               required
-              placeholder="VD: Ba, Giám đốc Trần, Kỹ sư Lý..."
+              placeholder={t('your_name_placeholder', selectedLang)}
               value={userName}
               onChange={(e) => setUserName(e.target.value)}
               className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3.5 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 transition"
+              autoFocus
             />
           </div>
 
           {/* Native Language Select */}
           <div className="space-y-1.5 text-left">
             <label className="text-xs font-semibold text-slate-300">
-              Ngôn ngữ mẹ đẻ của bạn / 您的母语:
+              {t('your_lang_label', selectedLang)}
             </label>
             <div className="grid grid-cols-3 gap-2">
               <button
@@ -115,37 +136,43 @@ export const JoinRoomScreen: React.FC<JoinRoomScreenProps> = ({
             </div>
           </div>
 
-          {/* Room ID Section */}
-          <div className="space-y-1.5 text-left">
-            <div className="flex items-center justify-between">
-              <label className="text-xs font-semibold text-slate-300">
-                Mã phòng / 房间号:
-              </label>
-              {!initialRoomId && (
+          {/* Room ID Section: Only show manual input if not scanned from QR */}
+          {!isScannedRoom && (
+            <div className="space-y-1.5 text-left">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-semibold text-slate-300">
+                  {t('room_code_label', selectedLang)}
+                </label>
                 <button
                   type="button"
                   onClick={handleCreateNewRoom}
                   className="text-[11px] text-blue-400 hover:text-blue-300 font-medium"
                 >
-                  Tạo mã ngẫu nhiên
+                  {t('generate_random_room', selectedLang)}
                 </button>
-              )}
+              </div>
+              <input
+                type="text"
+                placeholder={t('room_placeholder', selectedLang)}
+                value={roomId}
+                onChange={(e) => setRoomId(e.target.value)}
+                className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3.5 py-2.5 text-sm text-white font-mono placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 transition"
+              />
             </div>
-            <input
-              type="text"
-              placeholder="Nhập mã phòng hoặc để trống để tạo mới"
-              value={roomId}
-              onChange={(e) => setRoomId(e.target.value)}
-              className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3.5 py-2.5 text-sm text-white font-mono placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 transition"
-            />
-          </div>
+          )}
 
           {/* Submit Button */}
           <button
             type="submit"
             className="w-full py-3.5 px-4 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white rounded-xl font-semibold text-sm transition shadow-lg shadow-blue-500/20 flex items-center justify-center gap-2 mt-2"
           >
-            <span>Vào phòng đàm phán / 加入房间</span>
+            <span>
+              {isScannedRoom
+                ? t('join_submit_btn', selectedLang)
+                : roomId
+                ? t('join_submit_btn', selectedLang)
+                : t('create_and_join_btn', selectedLang)}
+            </span>
             <ArrowRight className="w-4 h-4" />
           </button>
         </form>
@@ -154,11 +181,11 @@ export const JoinRoomScreen: React.FC<JoinRoomScreenProps> = ({
         <div className="pt-2 border-t border-slate-800 grid grid-cols-2 gap-2 text-[11px] text-slate-400">
           <div className="flex items-center gap-1.5">
             <ShieldCheck className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-            <span>Đồng bộ Realtime MQTT</span>
+            <span>{t('feature_realtime_mqtt', selectedLang)}</span>
           </div>
           <div className="flex items-center gap-1.5">
             <Sparkles className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-            <span>AI Chuyên sâu Cơ khí</span>
+            <span>{t('feature_ai_specialized', selectedLang)}</span>
           </div>
         </div>
       </div>

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Mic, MicOff, Square, Radio, Sliders } from 'lucide-react';
-import type { OperationMode, RoomLockState } from '../types';
+import type { Language, OperationMode, RoomLockState } from '../types';
+import { t } from '../locales/i18n';
 
 interface AudioControlsProps {
   mode: OperationMode;
@@ -8,6 +9,7 @@ interface AudioControlsProps {
   isProcessing: boolean;
   lockState: RoomLockState;
   currentUserId: string;
+  currentLang: Language;
   onStartManualRecord: () => void;
   onStopManualRecord: () => void;
   onOpenCalibration: () => void;
@@ -20,6 +22,7 @@ export const AudioControls: React.FC<AudioControlsProps> = ({
   isProcessing,
   lockState,
   currentUserId,
+  currentLang,
   onStartManualRecord,
   onStopManualRecord,
   onOpenCalibration,
@@ -54,7 +57,7 @@ export const AudioControls: React.FC<AudioControlsProps> = ({
               onTouchStart={onStartManualRecord}
               onTouchEnd={onStopManualRecord}
               onClick={() => {
-                // If user clicks rather than holds
+                // Supports both tap-to-toggle and press-and-hold
                 if (isRecording) {
                   onStopManualRecord();
                 } else {
@@ -74,27 +77,27 @@ export const AudioControls: React.FC<AudioControlsProps> = ({
               {isLockedByOther ? (
                 <>
                   <MicOff className="w-5 h-5 text-slate-500" />
-                  <span>Mic đang bị khóa bởi {lockState.speakerName}</span>
+                  <span>{t('ptt_locked', currentLang, { name: lockState.speakerName || '' })}</span>
                 </>
               ) : isProcessing ? (
                 <>
                   <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                  <span>AI đang xử lý âm thanh...</span>
+                  <span>{t('ptt_processing', currentLang)}</span>
                 </>
               ) : isRecording ? (
                 <>
                   <Square className="w-5 h-5 fill-current" />
-                  <span>Đang ghi âm ({recordDuration}s) • Nhả hoặc Bấm để gửi</span>
+                  <span>{t('ptt_recording', currentLang, { sec: recordDuration })}</span>
                 </>
               ) : (
                 <>
                   <Mic className="w-5 h-5" />
-                  <span>Nhấn giữ hoặc Bấm để nói (Push to Talk)</span>
+                  <span>{t('ptt_idle', currentLang)}</span>
                 </>
               )}
             </button>
             <p className="text-[11px] text-slate-400">
-              💡 Chế độ chống ồn máy móc tối ưu • Nhấn để phát biểu
+              {t('ptt_hint', currentLang)}
             </p>
           </div>
         ) : (
@@ -121,13 +124,13 @@ export const AudioControls: React.FC<AudioControlsProps> = ({
               <div className="text-left">
                 <div className="text-xs font-semibold text-slate-200">
                   {isRecording
-                    ? 'Đang thu âm giọng nói...'
+                    ? t('vad_active_title', currentLang)
                     : isLockedByOther
-                    ? `Phòng đang khóa: ${lockState.speakerName}`
-                    : 'Rảnh tay thông minh (Auto VAD)'}
+                    ? t('ptt_locked', currentLang, { name: lockState.speakerName || '' })
+                    : t('vad_idle_title', currentLang)}
                 </div>
                 <div className="text-[11px] text-slate-400">
-                  Ngưỡng Proximity: {vadThresholdDb} dB • Đưa sát miệng để kích hoạt
+                  {t('vad_threshold_info', currentLang, { db: vadThresholdDb })}
                 </div>
               </div>
             </div>
@@ -137,7 +140,7 @@ export const AudioControls: React.FC<AudioControlsProps> = ({
               className="p-2 bg-slate-700/80 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-medium transition flex items-center gap-1.5 border border-slate-600"
             >
               <Sliders className="w-3.5 h-3.5 text-blue-400" />
-              <span className="hidden sm:inline">Cân chỉnh ồn</span>
+              <span className="hidden sm:inline">{t('vad_calibrate_btn', currentLang)}</span>
             </button>
           </div>
         )}

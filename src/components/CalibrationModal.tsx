@@ -1,10 +1,13 @@
 import React, { useState } from 'react';
 import { Sliders, X, Sparkles, Check, Volume2 } from 'lucide-react';
+import type { Language } from '../types';
+import { t } from '../locales/i18n';
 
 interface CalibrationModalProps {
   isOpen: boolean;
   onClose: () => void;
   currentThreshold: number;
+  currentLang: Language;
   onSaveThreshold: (db: number) => void;
   onRunAutoCalibrate: () => Promise<number>;
 }
@@ -13,6 +16,7 @@ export const CalibrationModal: React.FC<CalibrationModalProps> = ({
   isOpen,
   onClose,
   currentThreshold,
+  currentLang,
   onSaveThreshold,
   onRunAutoCalibrate,
 }) => {
@@ -53,21 +57,21 @@ export const CalibrationModal: React.FC<CalibrationModalProps> = ({
 
         <div className="flex items-center gap-2 mb-2 text-blue-400">
           <Sliders className="w-5 h-5" />
-          <h2 className="text-base font-semibold text-white">Cân Chỉnh Lọc Ồn Triển Lãm</h2>
+          <h2 className="text-base font-semibold text-white">{t('calib_title', currentLang)}</h2>
         </div>
 
         <p className="text-xs text-slate-400 mb-5 leading-relaxed">
-          Đo độ ồn xung quanh gian hàng máy móc để hệ thống chỉ kích hoạt thu âm khi đưa máy sát miệng.
+          {t('calib_desc', currentLang)}
         </p>
 
         {/* Auto Calibration Button */}
         <div className="p-4 bg-slate-800/80 border border-slate-700/80 rounded-xl mb-5 space-y-3">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-medium text-slate-200">Cân chỉnh tự động (3 giây)</span>
+            <span className="text-xs font-medium text-slate-200">{t('calib_auto_title', currentLang)}</span>
             <Sparkles className="w-4 h-4 text-amber-400" />
           </div>
           <p className="text-[11px] text-slate-400">
-            Giữ yên lặng xung quanh trong 3 giây để máy tự động đo cường độ âm thanh nền.
+            {t('calib_auto_desc', currentLang)}
           </p>
           <button
             onClick={handleAuto}
@@ -79,18 +83,18 @@ export const CalibrationModal: React.FC<CalibrationModalProps> = ({
             }`}
           >
             {isCalibrating ? (
-              <span>Đang đo tiếng ồn gian hàng...</span>
+              <span>{t('calib_measuring', currentLang)}</span>
             ) : (
               <>
                 <Volume2 className="w-4 h-4" />
-                <span>Bắt đầu đo tiếng ồn nền</span>
+                <span>{t('calib_start_btn', currentLang)}</span>
               </>
             )}
           </button>
           {calibratedVal !== null && (
             <div className="text-[11px] text-emerald-400 flex items-center gap-1 font-medium pt-1">
               <Check className="w-3.5 h-3.5" />
-              <span>Đã cân chỉnh thành công mức tối ưu: {calibratedVal} dB</span>
+              <span>{t('calib_success', currentLang, { db: calibratedVal })}</span>
             </div>
           )}
         </div>
@@ -98,7 +102,7 @@ export const CalibrationModal: React.FC<CalibrationModalProps> = ({
         {/* Manual Slider */}
         <div className="space-y-2 mb-6">
           <div className="flex justify-between items-center text-xs">
-            <span className="text-slate-300 font-medium">Ngưỡng Proximity dB thủ công:</span>
+            <span className="text-slate-300 font-medium">{t('calib_manual_label', currentLang)}</span>
             <span className="font-mono text-blue-400 font-bold">{sliderVal} dB</span>
           </div>
           <input
@@ -111,8 +115,8 @@ export const CalibrationModal: React.FC<CalibrationModalProps> = ({
             className="w-full accent-blue-500 cursor-pointer"
           />
           <div className="flex justify-between text-[10px] text-slate-500">
-            <span>-65 dB (Nhạy hơn)</span>
-            <span>-20 dB (Chống ồn cực mạnh)</span>
+            <span>{t('calib_sensitive', currentLang)}</span>
+            <span>{t('calib_noise_resist', currentLang)}</span>
           </div>
         </div>
 
@@ -122,13 +126,13 @@ export const CalibrationModal: React.FC<CalibrationModalProps> = ({
             onClick={onClose}
             className="flex-1 py-2 px-3 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-medium transition"
           >
-            Đóng
+            {t('calib_close_btn', currentLang)}
           </button>
           <button
             onClick={handleSave}
             className="flex-1 py-2 px-3 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-semibold transition shadow-md shadow-blue-500/20"
           >
-            Lưu cài đặt
+            {t('calib_save_btn', currentLang)}
           </button>
         </div>
       </div>

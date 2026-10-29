@@ -1,6 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import { Volume2, VolumeX, Globe } from 'lucide-react';
 import type { Language, TranslationMessage } from '../types';
+import { t } from '../locales/i18n';
 
 interface ChatFeedProps {
   messages: TranslationMessage[];
@@ -23,7 +24,7 @@ export const ChatFeed: React.FC<ChatFeedProps> = ({
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  const langLabels: Record<Language, string> = {
+  const langBadges: Record<Language, string> = {
     vi: 'Tiếng Việt',
     zh: '中文',
     en: 'English',
@@ -35,14 +36,15 @@ export const ChatFeed: React.FC<ChatFeedProps> = ({
         <div className="w-14 h-14 rounded-2xl bg-slate-800/80 border border-slate-700/80 flex items-center justify-center mb-3 text-blue-400">
           <Globe className="w-7 h-7" />
         </div>
-        <h3 className="text-base font-semibold text-white mb-1">Phòng hội thoại đã sẵn sàng</h3>
+        <h3 className="text-base font-semibold text-white mb-1">
+          {t('chat_empty_title', currentLang)}
+        </h3>
         <p className="text-xs text-slate-400 max-w-sm mb-4 leading-relaxed">
-          Đưa máy lại gần miệng để nói (hoặc nhấn giữ nút micro). AI sẽ tự động lọc tiếng ồn máy móc và dịch sang ngôn ngữ của từng người.
+          {t('chat_empty_desc', currentLang)}
         </p>
         <div className="p-3 bg-slate-800/50 border border-slate-700/50 rounded-xl text-xs text-slate-300 max-w-xs space-y-1">
-          <p className="font-medium text-blue-400">💡 Mẹo tại triển lãm:</p>
           <p className="text-[11px] text-slate-400">
-            Bấm nút <strong>Mã QR</strong> góc trên để đối tác Trung Quốc quét máy tham gia ngay lập tức.
+            {t('chat_empty_tip', currentLang)}
           </p>
         </div>
       </div>
@@ -54,6 +56,7 @@ export const ChatFeed: React.FC<ChatFeedProps> = ({
       <div className="max-w-3xl mx-auto space-y-3.5">
         {messages.map((msg) => {
           const isMe = msg.senderId === currentUserId;
+          // Translated text matches current device's selected language
           const translatedText = msg.translations[currentLang] || msg.originalText;
           const isPlaying = speakingMessageId === msg.id;
 
@@ -64,9 +67,13 @@ export const ChatFeed: React.FC<ChatFeedProps> = ({
             >
               {/* Speaker Header */}
               <div className="flex items-center gap-1.5 mb-1 px-1 text-[11px] text-slate-400">
-                <span className="font-semibold text-slate-300">{isMe ? 'Bạn' : msg.senderName}</span>
+                <span className="font-semibold text-slate-300">
+                  {isMe ? t('chat_you', currentLang) : msg.senderName}
+                </span>
                 <span>•</span>
-                <span>{new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                <span>
+                  {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                </span>
                 <span className="px-1.5 py-0.2 bg-slate-800 border border-slate-700 text-[10px] rounded text-slate-400">
                   {msg.detectedLang.toUpperCase()}
                 </span>
@@ -80,19 +87,21 @@ export const ChatFeed: React.FC<ChatFeedProps> = ({
                     : 'bg-slate-800 text-slate-100 border-slate-700/80 rounded-bl-sm'
                 }`}
               >
-                {/* Main Translated Text (Standard 15px-16px, readable and clear) */}
-                <div className="text-[15px] sm:text-base leading-snug font-normal">
+                {/* Main Translated Text (matches spoken audio) */}
+                <div className="text-[15px] sm:text-base leading-snug font-medium">
                   {translatedText}
                 </div>
 
-                {/* Subtext: Original Spoken Text (Gray small text for cross-referencing technical terms) */}
+                {/* Subtext: Original Spoken Text */}
                 {msg.originalText && msg.originalText !== translatedText && (
                   <div
                     className={`mt-2 pt-2 border-t text-xs italic ${
                       isMe ? 'border-blue-500/60 text-blue-100/80' : 'border-slate-700 text-slate-400'
                     }`}
                   >
-                    <span className="font-mono text-[10px] not-italic mr-1 opacity-70">Gốc:</span>
+                    <span className="font-mono text-[10px] not-italic mr-1 opacity-70">
+                      {t('chat_original_prefix', currentLang)}
+                    </span>
                     "{msg.originalText}"
                   </div>
                 )}
@@ -100,12 +109,12 @@ export const ChatFeed: React.FC<ChatFeedProps> = ({
                 {/* Action Footer: Audio playback button */}
                 <div className="mt-2.5 flex items-center justify-between text-xs pt-1 border-t border-white/10">
                   <span className={`text-[10px] ${isMe ? 'text-blue-200' : 'text-slate-400'}`}>
-                    Dịch: {langLabels[currentLang]}
+                    {langBadges[currentLang]}
                   </span>
 
                   <button
                     onClick={() => onPlayAudio(translatedText, currentLang)}
-                    title="Bấm để nghe đọc bản dịch (Offline Speech TTS)"
+                    title="Bấm để nghe lại bản dịch"
                     className={`p-1 rounded-md transition flex items-center gap-1 text-[11px] font-medium ${
                       isMe
                         ? 'hover:bg-blue-700 text-blue-100'
@@ -115,12 +124,12 @@ export const ChatFeed: React.FC<ChatFeedProps> = ({
                     {isPlaying ? (
                       <>
                         <VolumeX className="w-3.5 h-3.5" />
-                        <span>Đang đọc...</span>
+                        <span>{t('chat_speaking_btn', currentLang)}</span>
                       </>
                     ) : (
                       <>
                         <Volume2 className="w-3.5 h-3.5" />
-                        <span>Phát âm</span>
+                        <span>{t('chat_speak_btn', currentLang)}</span>
                       </>
                     )}
                   </button>

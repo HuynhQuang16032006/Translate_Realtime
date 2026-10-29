@@ -14,6 +14,7 @@ import { AudioControls } from './components/AudioControls';
 import { QrModal } from './components/QrModal';
 import { CalibrationModal } from './components/CalibrationModal';
 import { JoinRoomScreen } from './components/JoinRoomScreen';
+import { LiveSpeechPopup } from './components/LiveSpeechPopup';
 
 export const App: React.FC = () => {
   // Session & User State
@@ -22,9 +23,12 @@ export const App: React.FC = () => {
     id: '',
     name: '',
     lang: 'vi',
-    hasHeadphones: false,
+    hasHeadphones: true,
   });
   const [roomId, setRoomId] = useState<string>('');
+
+  // Auto-speak incoming translations (Default TRUE for instant real-time audio)
+  const [autoSpeak, setAutoSpeak] = useState<boolean>(true);
 
   // Realtime & Mutex Lock State
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('disconnected');
@@ -36,11 +40,25 @@ export const App: React.FC = () => {
   });
 
   // App Operation State
-  const [operationMode, setOperationMode] = useState<OperationMode>('ptt'); // Start with PTT for safety in noisy expo, user can switch to VAD
+  const [operationMode, setOperationMode] = useState<OperationMode>('ptt'); // Start with PTT for optimal noise rejection, switchable to VAD
   const [messages, setMessages] = useState<TranslationMessage[]>([]);
   const [isRecording, setIsRecording] = useState<boolean>(false);
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
   const [speakingMessageId, setSpeakingMessageId] = useState<string | null>(null);
+
+  // Live Speech Popup State (Shows what was just said as it is spoken)
+  const [livePopup, setLivePopup] = useState<{
+    isVisible: boolean;
+    speakerName: string;
+    translatedText: string;
+    originalText: string;
+  }>({
+    isVisible: false,
+    speakerName: '',
+    translatedText: '',
+    originalText: '',
+  });
+  const popupTimerRef = useRef<any>(null);
 
   // Audio DSP & VAD Visualizer
   const [audioLevelNormalized, setAudioLevelNormalized] = useState<number>(0);
@@ -58,13 +76,15 @@ export const App: React.FC = () => {
   const mqttServiceRef = useRef<MqttSyncService | null>(null);
   const isSpeakingTtsRef = useRef<boolean>(false);
 
-  // State refs to access latest values in DSP callbacks without re-binding
+  // State refs to access latest values in async DSP / MQTT callbacks without stale closure
   const inRoomRef = useRef(inRoom);
   inRoomRef.current = inRoom;
   const lockStateRef = useRef(lockState);
   lockStateRef.current = lockState;
   const userRef = useRef(user);
   userRef.current = user;
+  const autoSpeakRef = useRef(autoSpeak);
+  autoSpeakRef.current = autoSpeak;
   const operationModeRef = useRef(operationMode);
   operationModeRef.current = operationMode;
   const isRecordingRef = useRef(isRecording);
@@ -72,7 +92,7 @@ export const App: React.FC = () => {
   const isProcessingRef = useRef(isProcessing);
   isProcessingRef.current = isProcessing;
 
-  // Initialize room ID from URL if present
+  // 1. Auto-detect room ID from URL query parameters (for direct QR scan entry)
   useEffect(() => {
     if (typeof window !== 'undefined') {
       const params = new URLSearchParams(window.location.search);
@@ -101,24 +121,40 @@ export const App: React.FC = () => {
       return [...prev, msg];
     });
 
-    // If current user is wearing headphones, automatically play TTS
-    if (userRef.current.hasHeadphones) {
-      const translated = msg.translations[userRef.current.lang] || msg.originalText;
-      if (translated) {
-        setSpeakingMessageId(msg.id);
-        isSpeakingTtsRef.current = true;
-        speechService.speak(
-          translated,
-          userRef.current.lang,
-          () => {
-            isSpeakingTtsRef.current = true;
-          },
-          () => {
-            isSpeakingTtsRef.current = false;
-            setSpeakingMessageId(null);
-          }
-        );
-      }
+    const currentDeviceLang = userRef.current.lang;
+    const translatedText = msg.translations[currentDeviceLang] || msg.originalText;
+
+    // Trigger Floating Live Speech Popup
+    if (translatedText) {
+      if (popupTimerRef.current) clearTimeout(popupTimerRef.current);
+      setLivePopup({
+        isVisible: true,
+        speakerName: msg.senderName,
+        translatedText,
+        originalText: msg.originalText,
+      });
+
+      // Auto dismiss popup after 6 seconds
+      popupTimerRef.current = setTimeout(() => {
+        setLivePopup((prev) => ({ ...prev, isVisible: false }));
+      }, 6000);
+    }
+
+    // Auto-Speak Playback (Read out loud in device's chosen language)
+    if (autoSpeakRef.current && translatedText) {
+      setSpeakingMessageId(msg.id);
+      isSpeakingTtsRef.current = true;
+      speechService.speak(
+        translatedText,
+        currentDeviceLang,
+        () => {
+          isSpeakingTtsRef.current = true;
+        },
+        () => {
+          isSpeakingTtsRef.current = false;
+          setSpeakingMessageId(null);
+        }
+      );
     }
   }, []);
 
@@ -144,7 +180,7 @@ export const App: React.FC = () => {
 
       // If Gemini detected that the audio was just background machinery noise or empty
       if (data.is_noise_or_empty || !data.original_text?.trim()) {
-        console.log('Bỏ qua: Đoạn âm thanh là tiếng ồn máy móc hoặc im lặng.');
+        console.log('Bỏ qua: Đoạn âm thanh là tiếng ồn hoặc im lặng.');
         return;
       }
 
@@ -165,7 +201,7 @@ export const App: React.FC = () => {
       // Add to local state
       setMessages((prev) => [...prev, newMsg]);
 
-      // Broadcast to room via MQTT
+      // Broadcast to room via MQTT so other devices can hear and read immediately
       if (mqttServiceRef.current) {
         mqttServiceRef.current.broadcastTranslation(newMsg);
       }
@@ -182,18 +218,13 @@ export const App: React.FC = () => {
 
   // VAD Voice Start Handler
   const handleVoiceStart = useCallback(() => {
-    // Only in VAD mode
     if (operationModeRef.current !== 'vad') return;
-    // Do not trigger if already recording or processing
     if (isRecordingRef.current || isProcessingRef.current) return;
-    // Do not trigger if speech TTS is actively speaking (Anti-Echo Protection)
-    if (isSpeakingTtsRef.current) return;
-    // Check if room is locked by someone else
+    if (isSpeakingTtsRef.current) return; // Anti-Echo Protection while reading
     if (lockStateRef.current.isLocked && lockStateRef.current.lockedBy !== userRef.current.id) {
       return;
     }
 
-    // Try to acquire room mutex lock
     const acquired = mqttServiceRef.current?.broadcastLock();
     if (!acquired) return;
 
@@ -203,7 +234,7 @@ export const App: React.FC = () => {
     }
   }, []);
 
-  // VAD Voice End Handler (Called after 1.2s silence)
+  // VAD Voice End Handler (1.2s silence)
   const handleVoiceEnd = useCallback(async () => {
     if (operationModeRef.current !== 'vad') return;
     if (!isRecordingRef.current) return;
@@ -214,7 +245,6 @@ export const App: React.FC = () => {
       if (result) {
         await processAndTranslateAudio(result);
       } else {
-        // Empty or too short audio, release lock
         mqttServiceRef.current?.broadcastUnlock();
       }
     }
@@ -227,7 +257,7 @@ export const App: React.FC = () => {
       id: peerId,
       name,
       lang,
-      hasHeadphones: false,
+      hasHeadphones: true,
     };
 
     setUser(newUser);
@@ -237,7 +267,7 @@ export const App: React.FC = () => {
     // Keep screen awake (iOS Safari / Android)
     wakeLockService.requestLock();
 
-    // 1. Initialize Micro Stream
+    // 1. Initialize Microphone Stream
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
@@ -265,7 +295,7 @@ export const App: React.FC = () => {
       audioRecorderRef.current = new CrossBrowserAudioRecorder();
     } catch (err: any) {
       console.warn('Lỗi mở Micro:', err);
-      alert('Vui lòng cấp quyền Micro trong trình duyệt để sử dụng tính năng phiên dịch.');
+      alert('Vui lòng cấp quyền Micro trong trình duyệt để đàm thoại.');
     }
 
     // 4. Initialize MQTT Realtime Service
@@ -287,7 +317,6 @@ export const App: React.FC = () => {
     if (isRecording || isProcessing) return;
     if (lockState.isLocked && lockState.lockedBy !== user.id) return;
 
-    // Acquire lock
     const acquired = mqttServiceRef.current?.broadcastLock();
     if (!acquired) return;
 
@@ -313,7 +342,7 @@ export const App: React.FC = () => {
     }
   };
 
-  // Manual TTS Speak on chat bubble click
+  // Manual TTS Playback on message click
   const handlePlayMessageAudio = (text: string, lang: Language) => {
     if (speechService.isSpeaking()) {
       speechService.stop();
@@ -357,6 +386,17 @@ export const App: React.FC = () => {
     dspEngineRef.current?.updateConfig({ thresholdDb: db });
   };
 
+  // Leave room and return to entrance screen
+  const handleLeaveRoom = () => {
+    dspEngineRef.current?.stop();
+    mqttServiceRef.current?.disconnect();
+    if (mediaStreamRef.current) {
+      mediaStreamRef.current.getTracks().forEach((track) => track.stop());
+    }
+    setInRoom(false);
+    setMessages([]);
+  };
+
   // Cleanup on unmount
   useEffect(() => {
     return () => {
@@ -369,7 +409,7 @@ export const App: React.FC = () => {
     };
   }, []);
 
-  // If user hasn't joined room, show entrance screen
+  // Entrance Screen (if not yet in room)
   if (!inRoom) {
     return (
       <>
@@ -384,6 +424,16 @@ export const App: React.FC = () => {
       {/* WeChat In-App Browser Warning & Overlay */}
       <WeChatDetector />
 
+      {/* Floating Live Speech Toast Popup */}
+      <LiveSpeechPopup
+        speakerName={livePopup.speakerName}
+        translatedText={livePopup.translatedText}
+        originalText={livePopup.originalText}
+        currentLang={user.lang}
+        isVisible={livePopup.isVisible}
+        onDismiss={() => setLivePopup((prev) => ({ ...prev, isVisible: false }))}
+      />
+
       {/* Top Navigation & Settings Header */}
       <RoomHeader
         roomId={roomId}
@@ -392,18 +442,18 @@ export const App: React.FC = () => {
         onLanguageChange={(newLang) => setUser((prev) => ({ ...prev, lang: newLang }))}
         mode={operationMode}
         onModeToggle={() => setOperationMode((prev) => (prev === 'vad' ? 'ptt' : 'vad'))}
-        hasHeadphones={user.hasHeadphones}
-        onHeadphonesToggle={() =>
-          setUser((prev) => ({ ...prev, hasHeadphones: !prev.hasHeadphones }))
-        }
+        autoSpeak={autoSpeak}
+        onAutoSpeakToggle={() => setAutoSpeak((prev) => !prev)}
         onOpenQr={() => setIsQrOpen(true)}
         onOpenCalibration={() => setIsCalibrationOpen(true)}
+        onLeaveRoom={handleLeaveRoom}
       />
 
       {/* Mutex Lock Status & Sound Level Bar */}
       <LiveStatusBar
         lockState={lockState}
         currentUserId={user.id}
+        currentLang={user.lang}
         isRecording={isRecording}
         isProcessing={isProcessing}
         audioLevelNormalized={audioLevelNormalized}
@@ -427,6 +477,7 @@ export const App: React.FC = () => {
         isProcessing={isProcessing}
         lockState={lockState}
         currentUserId={user.id}
+        currentLang={user.lang}
         onStartManualRecord={handleStartManualRecord}
         onStopManualRecord={handleStopManualRecord}
         onOpenCalibration={() => setIsCalibrationOpen(true)}
@@ -438,6 +489,7 @@ export const App: React.FC = () => {
         isOpen={isQrOpen}
         onClose={() => setIsQrOpen(false)}
         roomId={roomId}
+        currentLang={user.lang}
       />
 
       {/* Noise Calibration Modal */}
@@ -445,6 +497,7 @@ export const App: React.FC = () => {
         isOpen={isCalibrationOpen}
         onClose={() => setIsCalibrationOpen(false)}
         currentThreshold={vadThresholdDb}
+        currentLang={user.lang}
         onSaveThreshold={handleSaveThreshold}
         onRunAutoCalibrate={handleRunAutoCalibrate}
       />
