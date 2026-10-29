@@ -35,18 +35,27 @@ export default async function handler(req: any, res: any) {
     });
   }
 
-  // Diagnostic GET to list available models
+  // Diagnostic GET to test generateContent with models
   if (req.method === 'GET') {
     try {
       const ai = new GoogleGenAI({ apiKey });
-      const modelsList = await ai.models.list();
-      const modelNames: string[] = [];
-      for await (const m of modelsList) {
-        if (m.supportedActions?.includes('generateContent') || m.name) {
-          modelNames.push(m.name || '');
+      const testResults: Record<string, any> = {};
+      const testModels = ['gemini-3.7-flash', 'gemini-flash-latest', 'gemini-3.5-flash', 'gemini-3.8-flash'];
+
+      for (const m of testModels) {
+        try {
+          const resp = await ai.models.generateContent({
+            model: m,
+            contents: 'Xin chào, trả lời ngắn gọn: OK',
+          });
+          testResults[m] = { success: true, text: resp.text };
+          break; // Stop at first successful model!
+        } catch (err: any) {
+          testResults[m] = { success: false, error: err?.message || String(err) };
         }
       }
-      return sendResponse(200, { availableModels: modelNames });
+
+      return sendResponse(200, { testResults });
     } catch (e: any) {
       return sendResponse(500, { error: e.message });
     }

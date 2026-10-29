@@ -35,7 +35,7 @@ export default defineConfig(({ mode }) => {
               // Handle GET requests (like diagnostics)
               if (req.method === 'GET') {
                 if (!process.env.GEMINI_API_KEY) {
-                  const proxyRes = await fetch('https://transrealtime.online/api/translate', { method: 'GET' });
+                  const proxyRes = await fetch('https://www.transrealtime.online/api/translate', { method: 'GET' });
                   res.statusCode = proxyRes.status;
                   res.setHeader('Content-Type', 'application/json');
                   const text = await proxyRes.text();
@@ -54,7 +54,7 @@ export default defineConfig(({ mode }) => {
                   try {
                     // If no local GEMINI_API_KEY, transparently proxy to live Vercel production
                     if (!process.env.GEMINI_API_KEY) {
-                      const proxyRes = await fetch('https://transrealtime.online/api/translate', {
+                      const proxyRes = await fetch('https://www.transrealtime.online/api/translate', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body,
