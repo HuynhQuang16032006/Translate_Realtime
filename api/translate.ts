@@ -18,22 +18,49 @@ export default async function handler(req: any, res: any) {
     return res.status(200).end();
   }
 
-  if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method Not Allowed' });
-  }
+  // Universal JSON responder compatible with both Vercel and Node http.ServerResponse
+  const sendResponse = (statusCode: number, data: any) => {
+    if (typeof res.status === 'function') {
+      return res.status(statusCode).json(data);
+    }
+    res.statusCode = statusCode;
+    res.setHeader('Content-Type', 'application/json');
+    return res.end(JSON.stringify(data));
+  };
 
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
-    return res.status(500).json({
+    return sendResponse(500, {
       error: 'GEMINI_API_KEY chưa được cấu hình. Vui lòng thêm biến môi trường trên Vercel hoặc file .env',
     });
+  }
+
+  // Diagnostic GET to list available models
+  if (req.method === 'GET') {
+    try {
+      const ai = new GoogleGenAI({ apiKey });
+      const modelsList = await ai.models.list();
+      const modelNames: string[] = [];
+      for await (const m of modelsList) {
+        if (m.supportedActions?.includes('generateContent') || m.name) {
+          modelNames.push(m.name || '');
+        }
+      }
+      return sendResponse(200, { availableModels: modelNames });
+    } catch (e: any) {
+      return sendResponse(500, { error: e.message });
+    }
+  }
+
+  if (req.method !== 'POST') {
+    return sendResponse(405, { error: 'Method Not Allowed' });
   }
 
   try {
     const { audioBase64, mimeType, speakerLang } = req.body || {};
 
     if (!audioBase64) {
-      return res.status(400).json({ error: 'Missing audioBase64 payload.' });
+      return sendResponse(400, { error: 'Missing audioBase64 payload.' });
     }
 
     const ai = new GoogleGenAI({ apiKey });
@@ -53,77 +80,95 @@ Nhiệm vụ:
    - Nếu nghe thấy bất kỳ từ ngữ, câu nói nào dù ngắn (ví dụ: "chào bạn", "giá này bao nhiêu", "你好", "hello", "ok", "máy móc", "hợp đồng"...), bạn BẮT BUỘC nhận diện, dịch và đặt "is_noise_or_empty": false.
    - CHỈ đặt "is_noise_or_empty": true nếu đoạn âm thanh HOÀN TOÀN KHÔNG CÓ TIẾNG NGƯỜI NÓI (chỉ là tiếng thở dài, tiếng im lặng hoặc tiếng gõ kim loại vô nghĩa).`;
 
-    // Try candidate models: primary gemini-3.8-flash, with fallback to 2.5, 2.0, 1.5
-    const candidateModels = ['gemini-3.8-flash', 'gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'];
+    // Try active Gemini models with retry logic for 503 high demand spikes
+    const candidateModels = [
+      'gemini-3.8-flash',
+      'gemini-2.5-pro',
+      'gemini-2.0-flash-lite',
+      'gemini-1.5-pro',
+    ];
     const modelErrors: Record<string, string> = {};
     let responseText = '';
 
     for (const modelName of candidateModels) {
-      try {
-        const response = await ai.models.generateContent({
-          model: modelName,
-          contents: [
-            {
-              role: 'user',
-              parts: [
-                {
-                  inlineData: {
-                    mimeType: cleanMimeType,
-                    data: audioBase64,
+      // Allow up to 2 attempts per candidate model for temporary 503 rate limits
+      for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+          const response = await ai.models.generateContent({
+            model: modelName,
+            contents: [
+              {
+                role: 'user',
+                parts: [
+                  {
+                    inlineData: {
+                      mimeType: cleanMimeType,
+                      data: audioBase64,
+                    },
                   },
-                },
-                {
-                  text: 'Hãy nhận diện giọng nói trong đoạn ghi âm và dịch sang 3 ngôn ngữ theo đúng định dạng JSON.',
-                },
-              ],
-            },
-          ],
-          config: {
-            systemInstruction,
-            responseMimeType: 'application/json',
-            responseSchema: {
-              type: Type.OBJECT,
-              properties: {
-                is_noise_or_empty: { type: Type.BOOLEAN },
-                detected_lang: { type: Type.STRING, enum: ['vi', 'zh', 'en'] },
-                original_text: { type: Type.STRING },
-                translations: {
-                  type: Type.OBJECT,
-                  properties: {
-                    vi: { type: Type.STRING },
-                    zh: { type: Type.STRING },
-                    en: { type: Type.STRING },
+                  {
+                    text: 'Hãy nhận diện giọng nói trong đoạn ghi âm và dịch sang 3 ngôn ngữ theo đúng định dạng JSON.',
                   },
-                  required: ['vi', 'zh', 'en'],
-                },
+                ],
               },
-              required: ['is_noise_or_empty', 'detected_lang', 'original_text', 'translations'],
+            ],
+            config: {
+              systemInstruction,
+              responseMimeType: 'application/json',
+              responseSchema: {
+                type: Type.OBJECT,
+                properties: {
+                  is_noise_or_empty: { type: Type.BOOLEAN },
+                  detected_lang: { type: Type.STRING, enum: ['vi', 'zh', 'en'] },
+                  original_text: { type: Type.STRING },
+                  translations: {
+                    type: Type.OBJECT,
+                    properties: {
+                      vi: { type: Type.STRING },
+                      zh: { type: Type.STRING },
+                      en: { type: Type.STRING },
+                    },
+                    required: ['vi', 'zh', 'en'],
+                  },
+                },
+                required: ['is_noise_or_empty', 'detected_lang', 'original_text', 'translations'],
+              },
+              temperature: 0.1,
             },
-            temperature: 0.1,
-          },
-        });
+          });
 
-        if (response && response.text) {
-          responseText = response.text;
-          break; // Succeeded!
+          if (response && response.text) {
+            responseText = response.text;
+            break;
+          }
+        } catch (err: any) {
+          modelErrors[`${modelName}_attempt${attempt + 1}`] = err?.message || String(err);
+          // If 503 high demand, short delay before retry
+          if (attempt === 0 && (err?.message?.includes('503') || err?.message?.includes('high demand'))) {
+            await new Promise((r) => setTimeout(r, 600));
+            continue;
+          }
+          break; // Move to next model
         }
-      } catch (err: any) {
-        modelErrors[modelName] = err?.message || String(err);
+      }
+
+      if (responseText) {
+        break; // Successfully got response
       }
     }
 
     if (!responseText) {
-      return res.status(500).json({
+      return sendResponse(500, {
         error: 'Tất cả các model AI đều thất bại',
         modelErrors,
       });
     }
 
     const parsed = JSON.parse(responseText);
-    return res.status(200).json(parsed);
+    return sendResponse(200, parsed);
   } catch (error: any) {
     console.error('Lỗi phiên dịch Gemini API:', error);
-    return res.status(500).json({
+    return sendResponse(500, {
       error: 'Lỗi phiên dịch giọng nói',
       details: error?.message || String(error),
     });
