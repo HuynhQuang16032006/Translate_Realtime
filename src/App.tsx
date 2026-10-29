@@ -573,6 +573,7 @@ export const App: React.FC = () => {
         messages={messages}
         roomId={roomId}
         currentLang={user.lang}
+        currentUserId={user.id}
       />
     </div>
   );

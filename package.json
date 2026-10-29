@@ -11,6 +11,8 @@
   },
   "dependencies": {
     "@google/genai": "^2.32.0",
+    "html2canvas": "^1.4.1",
+    "jspdf": "^4.2.1",
     "lucide-react": "^1.64.0",
     "mqtt": "^5.16.1",
     "qrcode.react": "^4.2.0",
