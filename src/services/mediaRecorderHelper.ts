@@ -96,8 +96,8 @@ export class CrossBrowserAudioRecorder {
         const mime = this.selectedMimeType || this.mediaRecorder?.mimeType || 'audio/webm';
         const audioBlob = new Blob(this.recordedChunks, { type: mime });
 
-        // If audio is under 300ms, it's likely just a click or pop
-        if (durationMs < 300 || audioBlob.size < 1000) {
+        // Discard only if audio is practically empty (under 150ms or under 100 bytes)
+        if (durationMs < 150 || audioBlob.size < 100) {
           resolve(null);
           return;
         }

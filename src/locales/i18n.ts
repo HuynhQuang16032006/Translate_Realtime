@@ -59,10 +59,10 @@ export const translations = {
     chat_speaking_btn: 'Đang đọc...',
 
     // Audio Controls
-    ptt_idle: 'Bấm hoặc Nhấn giữ để nói (Push to Talk)',
-    ptt_recording: 'Đang ghi âm ({sec}s) • Bấm hoặc Nhả để gửi',
+    ptt_idle: 'Bấm để nói (Click to Speak)',
+    ptt_recording: 'Đang ghi âm ({sec}s) • Bấm để Dừng & Dịch',
     ptt_locked: 'Mic đang bị khóa bởi {name}',
-    ptt_processing: 'Đang dịch thuật...',
+    ptt_processing: 'AI đang nhận diện & dịch thuật...',
     ptt_hint: '💡 Chế độ chống ồn máy móc & hội trường tối ưu',
     vad_active_title: 'Đang thu âm giọng nói...',
     vad_idle_title: 'Rảnh tay thông minh (Auto VAD)',
@@ -157,10 +157,10 @@ export const translations = {
     chat_speaking_btn: '正在朗读...',
 
     // Audio Controls
-    ptt_idle: '按住或点击开始发言 (Push to Talk)',
-    ptt_recording: '正在录音 ({sec}s) • 松开或点击立即发送',
+    ptt_idle: '点击开始发言',
+    ptt_recording: '正在录音 ({sec}s) • 点击完成并翻译',
     ptt_locked: '麦克风已被 {name} 占用',
-    ptt_processing: '正在翻译中...',
+    ptt_processing: '正在智能识别与翻译...',
     ptt_hint: '💡 针对机械展会与嘈杂车间优化的防串音对讲',
     vad_active_title: '正在录音中...',
     vad_idle_title: '智能自由拾音 (Auto VAD)',
@@ -255,10 +255,10 @@ export const translations = {
     chat_speaking_btn: 'Reading...',
 
     // Audio Controls
-    ptt_idle: 'Hold or Tap to Speak (Push to Talk)',
-    ptt_recording: 'Recording ({sec}s) • Release or Tap to send',
+    ptt_idle: 'Click to Speak',
+    ptt_recording: 'Recording ({sec}s) • Click to Stop & Translate',
     ptt_locked: 'Microphone is locked by {name}',
-    ptt_processing: 'Translating audio...',
+    ptt_processing: 'Translating audio with AI...',
     ptt_hint: '💡 Optimized anti-echo intercom for loud factory booths',
     vad_active_title: 'Recording voice...',
     vad_idle_title: 'Smart Hands-free (Auto VAD)',

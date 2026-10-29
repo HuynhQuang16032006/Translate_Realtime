@@ -52,26 +52,21 @@ export const AudioControls: React.FC<AudioControlsProps> = ({
           <div className="w-full flex flex-col items-center gap-2">
             <button
               disabled={isLockedByOther || isProcessing}
-              onMouseDown={onStartManualRecord}
-              onMouseUp={onStopManualRecord}
-              onTouchStart={onStartManualRecord}
-              onTouchEnd={onStopManualRecord}
               onClick={() => {
-                // Supports both tap-to-toggle and press-and-hold
                 if (isRecording) {
                   onStopManualRecord();
                 } else {
                   onStartManualRecord();
                 }
               }}
-              className={`w-full py-3.5 px-6 rounded-2xl font-semibold text-sm transition-all shadow-lg flex items-center justify-center gap-2.5 select-none touch-none ${
+              className={`w-full py-4 px-6 rounded-2xl font-bold text-sm sm:text-base transition-all shadow-lg flex items-center justify-center gap-3 select-none active:scale-[0.98] ${
                 isLockedByOther
                   ? 'bg-slate-800 text-slate-500 border border-slate-700 cursor-not-allowed'
                   : isRecording
-                  ? 'bg-rose-600 text-white shadow-rose-600/40 ring-4 ring-rose-500/30 animate-pulse'
+                  ? 'bg-rose-600 hover:bg-rose-500 text-white shadow-rose-600/40 ring-4 ring-rose-500/30 animate-pulse'
                   : isProcessing
                   ? 'bg-blue-800 text-blue-200 cursor-wait'
-                  : 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white shadow-blue-500/20 active:scale-[0.98]'
+                  : 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white shadow-blue-500/30'
               }`}
             >
               {isLockedByOther ? (
@@ -86,7 +81,7 @@ export const AudioControls: React.FC<AudioControlsProps> = ({
                 </>
               ) : isRecording ? (
                 <>
-                  <Square className="w-5 h-5 fill-current" />
+                  <Square className="w-5 h-5 fill-current animate-bounce" />
                   <span>{t('ptt_recording', currentLang, { sec: recordDuration })}</span>
                 </>
               ) : (
