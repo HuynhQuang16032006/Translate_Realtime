@@ -3,6 +3,7 @@ import type { Language } from '../types';
 export class SpeechRecognitionService {
   private recognition: any = null;
   private currentTranscript: string = '';
+  private accumulatedTranscript: string = '';
   private isListening: boolean = false;
   private onUpdateCallback: ((text: string) => void) | null = null;
 
@@ -25,7 +26,10 @@ export class SpeechRecognitionService {
       return false;
     }
 
-    // Always instantiate fresh instance to prevent browser session lockup
+    this.currentTranscript = '';
+    this.accumulatedTranscript = '';
+    this.isListening = true;
+
     try {
       if (this.recognition) {
         try {
@@ -35,11 +39,11 @@ export class SpeechRecognitionService {
         }
       }
 
-      this.currentTranscript = '';
-      this.isListening = true;
-
+      const isMobile = typeof navigator !== 'undefined' && /iPhone|iPad|iPod|Android|Mobile/i.test(navigator.userAgent);
       const recognition = new SpeechRecognition();
-      recognition.continuous = true;
+
+      // Mobile Safari and Android Chromium stream interim results much faster when continuous is false
+      recognition.continuous = !isMobile;
       recognition.interimResults = true;
       recognition.maxAlternatives = 1;
 
@@ -53,14 +57,24 @@ export class SpeechRecognitionService {
       recognition.onresult = (event: any) => {
         let finalStr = '';
         let interimStr = '';
-        for (let i = 0; i < event.results.length; ++i) {
-          if (event.results[i].isFinal) {
-            finalStr += event.results[i][0].transcript + ' ';
+
+        const startIndex = isMobile ? 0 : (event.resultIndex || 0);
+        for (let i = startIndex; i < event.results.length; ++i) {
+          const item = event.results[i];
+          if (!item || !item[0]) continue;
+          const transcript = item[0].transcript || '';
+          if (item.isFinal) {
+            finalStr += transcript + ' ';
           } else {
-            interimStr += event.results[i][0].transcript;
+            interimStr += transcript;
           }
         }
-        const full = (finalStr + interimStr).trim();
+
+        if (finalStr.trim()) {
+          this.accumulatedTranscript = (this.accumulatedTranscript + ' ' + finalStr).trim();
+        }
+
+        const full = (this.accumulatedTranscript + ' ' + interimStr).trim();
         if (full) {
           this.currentTranscript = full;
           if (this.onUpdateCallback) {
@@ -70,14 +84,31 @@ export class SpeechRecognitionService {
       };
 
       recognition.onerror = (event: any) => {
-        console.warn('SpeechRecognition event error:', event.error);
-        if (event.error === 'not-allowed') {
-          console.warn('Microphone permission denied for speech recognition.');
+        const error = event?.error;
+        console.warn('SpeechRecognition event error:', error);
+        if (error === 'no-speech') {
+          return;
+        }
+        if (this.isListening && error !== 'not-allowed') {
+          setTimeout(() => {
+            if (this.isListening) {
+              try {
+                recognition.start();
+              } catch (e) {}
+            }
+          }, 100);
         }
       };
 
       recognition.onend = () => {
-        this.isListening = false;
+        // Seamless auto-restart on mobile phrase boundaries while user is still holding PTT
+        if (this.isListening) {
+          try {
+            recognition.start();
+          } catch (e) {
+            // Ignore
+          }
+        }
       };
 
       recognition.start();
@@ -85,50 +116,46 @@ export class SpeechRecognitionService {
       return true;
     } catch (err) {
       console.warn('Lỗi khởi động SpeechRecognition:', err);
-      this.isListening = false;
       return false;
     }
   }
 
   public stop(): Promise<string> {
-    return new Promise((resolve) => {
-      if (!this.recognition || !this.isListening) {
-        resolve(this.currentTranscript.trim());
-        return;
-      }
-
-      this.isListening = false;
+    this.isListening = false;
+    if (this.recognition) {
       try {
         this.recognition.stop();
       } catch (e) {
         // Ignore
       }
+    }
 
-      // Fast-resolve if transcript already has content, otherwise allow brief window for final audio buffer
-      const waitTime = this.currentTranscript.trim() ? 40 : 180;
-      setTimeout(() => {
-        resolve(this.currentTranscript.trim());
-      }, waitTime);
-    });
+    // Return current captured transcript immediately
+    const text = this.currentTranscript.trim() || this.accumulatedTranscript.trim();
+    return Promise.resolve(text);
   }
 
   public getCurrentTranscript(): string {
-    return this.currentTranscript.trim();
+    return (this.currentTranscript.trim() || this.accumulatedTranscript.trim());
   }
 
   /**
-   * Free, zero-API-key serverless Speech-to-Text fallback using Puter.js
+   * Fast serverless STT fallback using Puter.js
    */
   public async transcribeAudioBlobWithPuter(blob: Blob): Promise<string> {
     try {
       const puter = typeof window !== 'undefined' ? (window as any).puter : null;
       if (puter?.ai?.speech2txt) {
-        const res = await puter.ai.speech2txt(blob);
+        // 5s timeout max to avoid hanging user
+        const res = await Promise.race([
+          puter.ai.speech2txt(blob),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('Puter timeout')), 4500)),
+        ]);
         if (typeof res === 'string') return res.trim();
-        if (res && typeof res.text === 'string') return res.text.trim();
+        if (res && typeof (res as any).text === 'string') return (res as any).text.trim();
       }
     } catch (e) {
-      console.warn('Puter STT fallback:', e);
+      console.warn('Puter STT timeout/fallback:', e);
     }
     return '';
   }

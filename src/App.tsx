@@ -401,9 +401,12 @@ export const App: React.FC = () => {
 
       let textToUse = (clientTranscript || speechRecognitionHelper.getCurrentTranscript() || liveTranscript || '').trim();
 
-      // Free serverless STT fallback if browser Web Speech API did not capture audio
+      // Rapid serverless STT fallback if browser Web Speech API did not capture audio (max 2.5s)
       if (!textToUse && recordResult?.blob) {
-        textToUse = await speechRecognitionHelper.transcribeAudioBlobWithPuter(recordResult.blob);
+        textToUse = await Promise.race([
+          speechRecognitionHelper.transcribeAudioBlobWithPuter(recordResult.blob),
+          new Promise<string>((resolve) => setTimeout(() => resolve(''), 2500)),
+        ]);
       }
 
       if (textToUse) {

@@ -117,8 +117,9 @@ Nhiệm vụ:
 }`;
 
     const candidateModels = [
-      'gemini-3.5-flash',
-      'gemini-3.5-flash-lite',
+      'gemini-2.0-flash',
+      'gemini-1.5-flash',
+      'gemini-1.5-flash-8b',
     ];
 
     const payload = {
@@ -159,7 +160,7 @@ Nhiệm vụ:
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload),
-            signal: AbortSignal.timeout(12000), // 12s timeout for multimodal audio
+            signal: AbortSignal.timeout(6000), // 6s fast timeout for real-time response
           }
         );
 
