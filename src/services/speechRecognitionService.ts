@@ -51,13 +51,21 @@ export class SpeechRecognitionService {
       recognition.lang = langMap[lang] || 'vi-VN';
 
       recognition.onresult = (event: any) => {
-        let str = '';
+        let finalStr = '';
+        let interimStr = '';
         for (let i = 0; i < event.results.length; ++i) {
-          str += event.results[i][0].transcript + ' ';
+          if (event.results[i].isFinal) {
+            finalStr += event.results[i][0].transcript + ' ';
+          } else {
+            interimStr += event.results[i][0].transcript;
+          }
         }
-        this.currentTranscript = str.trim();
-        if (this.onUpdateCallback) {
-          this.onUpdateCallback(this.currentTranscript);
+        const full = (finalStr + interimStr).trim();
+        if (full) {
+          this.currentTranscript = full;
+          if (this.onUpdateCallback) {
+            this.onUpdateCallback(this.currentTranscript);
+          }
         }
       };
 
@@ -96,15 +104,32 @@ export class SpeechRecognitionService {
         // Ignore
       }
 
-      // Small delay to allow any pending audio buffers to finalize
+      // Small delay to allow any pending native audio buffers to finalize
       setTimeout(() => {
         resolve(this.currentTranscript.trim());
-      }, 200);
+      }, 350);
     });
   }
 
   public getCurrentTranscript(): string {
     return this.currentTranscript.trim();
+  }
+
+  /**
+   * Free, zero-API-key serverless Speech-to-Text fallback using Puter.js
+   */
+  public async transcribeAudioBlobWithPuter(blob: Blob): Promise<string> {
+    try {
+      const puter = typeof window !== 'undefined' ? (window as any).puter : null;
+      if (puter?.ai?.speech2txt) {
+        const res = await puter.ai.speech2txt(blob);
+        if (typeof res === 'string') return res.trim();
+        if (res && typeof res.text === 'string') return res.text.trim();
+      }
+    } catch (e) {
+      console.warn('Puter STT fallback:', e);
+    }
+    return '';
   }
 }
 

@@ -2,6 +2,7 @@ export interface AudioRecordResult {
   audioBase64: string;
   mimeType: string;
   durationMs: number;
+  blob?: Blob;
 }
 
 export class CrossBrowserAudioRecorder {
@@ -108,6 +109,7 @@ export class CrossBrowserAudioRecorder {
             audioBase64: base64,
             mimeType: mime,
             durationMs,
+            blob: audioBlob,
           });
         } catch (err) {
           console.error('Lỗi chuyển đổi Blob sang Base64:', err);

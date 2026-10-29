@@ -301,13 +301,22 @@ export const App: React.FC = () => {
         speechRecognitionHelper.stop(),
       ]);
 
-      if (recordResult || clientTranscript) {
-        await processAndTranslateAudio(recordResult, clientTranscript);
+      let textToUse = (clientTranscript || speechRecognitionHelper.getCurrentTranscript() || liveTranscript || '').trim();
+
+      // Free serverless STT fallback if browser Web Speech API did not capture audio
+      if (!textToUse && recordResult?.blob) {
+        textToUse = await speechRecognitionHelper.transcribeAudioBlobWithPuter(recordResult.blob);
+      }
+
+      if (textToUse) {
+        await processAndTranslateAudio(null, textToUse);
+      } else if (recordResult) {
+        await processAndTranslateAudio(recordResult, '');
       } else {
         mqttServiceRef.current?.broadcastUnlock();
       }
     }
-  }, []);
+  }, [liveTranscript]);
 
   // Join Room Execution
   const handleJoinRoom = async (name: string, room: string, lang: Language) => {
@@ -405,8 +414,17 @@ export const App: React.FC = () => {
         speechRecognitionHelper.stop(),
       ]);
 
-      if (recordResult || clientTranscript) {
-        await processAndTranslateAudio(recordResult, clientTranscript);
+      let textToUse = (clientTranscript || speechRecognitionHelper.getCurrentTranscript() || liveTranscript || '').trim();
+
+      // Free serverless STT fallback if browser Web Speech API did not capture audio
+      if (!textToUse && recordResult?.blob) {
+        textToUse = await speechRecognitionHelper.transcribeAudioBlobWithPuter(recordResult.blob);
+      }
+
+      if (textToUse) {
+        await processAndTranslateAudio(null, textToUse);
+      } else if (recordResult) {
+        await processAndTranslateAudio(recordResult, '');
       } else {
         mqttServiceRef.current?.broadcastUnlock();
       }
