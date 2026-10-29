@@ -261,6 +261,33 @@ export const App: React.FC = () => {
       if (mqttServiceRef.current) {
         mqttServiceRef.current.broadcastTranslation(newMsg);
       }
+
+      // 4. Auto-Speak for speaker's device (speaks translated target language for partner or self verification)
+      if (autoSpeakRef.current) {
+        const targetLangToSpeak: Language =
+          newMsg.detectedLang === 'zh'
+            ? 'vi'
+            : newMsg.detectedLang === 'vi'
+            ? 'zh'
+            : (currentDeviceLang === 'en' ? 'zh' : 'en');
+
+        const textToSpeak = newMsg.translations[targetLangToSpeak] || speakerTranslated;
+        if (textToSpeak) {
+          setSpeakingMessageId(newMsg.id);
+          isSpeakingTtsRef.current = true;
+          speechService.speak(
+            textToSpeak,
+            targetLangToSpeak,
+            () => {
+              isSpeakingTtsRef.current = true;
+            },
+            () => {
+              isSpeakingTtsRef.current = false;
+              setSpeakingMessageId(null);
+            }
+          );
+        }
+      }
     } catch (err: any) {
       console.error('Lỗi phiên dịch audio:', err);
       showErrorToast(`Lỗi kết nối: ${err?.message || 'Không thể gửi đoạn thu âm'}`);
@@ -339,6 +366,9 @@ export const App: React.FC = () => {
     });
     mqttService.connect();
     mqttServiceRef.current = mqttService;
+
+    // Permanently unlock mobile audio autoplay on first user join gesture
+    speechService.unlockMobileAudio();
   };
 
   // Recall / Delete message across all room participants
@@ -361,14 +391,25 @@ export const App: React.FC = () => {
     if (isRecording || isProcessing) return;
     if (lockState.isLocked && lockState.lockedBy !== user.id) return;
 
+    // Unlock audio autoplay on user touch gesture
+    speechService.unlockMobileAudio();
+
     const acquired = mqttServiceRef.current?.broadcastLock();
     if (!acquired) return;
 
+    setLiveTranscript('');
+    setIsRecording(true);
+
+    // 1. Start live speech recognition for real-time text
+    speechRecognitionHelper.start(userRef.current.lang);
+
+    // 2. Start audio recorder as backup
     if (mediaStreamRef.current && audioRecorderRef.current) {
-      setLiveTranscript('');
-      audioRecorderRef.current.start(mediaStreamRef.current);
-      speechRecognitionHelper.start(userRef.current.lang);
-      setIsRecording(true);
+      try {
+        audioRecorderRef.current.start(mediaStreamRef.current);
+      } catch (e) {
+        console.warn('Audio recorder start:', e);
+      }
     }
   };
 
@@ -400,14 +441,6 @@ export const App: React.FC = () => {
       ]);
 
       let textToUse = (clientTranscript || speechRecognitionHelper.getCurrentTranscript() || liveTranscript || '').trim();
-
-      // Rapid serverless STT fallback if browser Web Speech API did not capture audio (max 2.5s)
-      if (!textToUse && recordResult?.blob) {
-        textToUse = await Promise.race([
-          speechRecognitionHelper.transcribeAudioBlobWithPuter(recordResult.blob),
-          new Promise<string>((resolve) => setTimeout(() => resolve(''), 2500)),
-        ]);
-      }
 
       if (textToUse) {
         await processAndTranslateAudio(null, textToUse);

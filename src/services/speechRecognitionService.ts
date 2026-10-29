@@ -138,27 +138,6 @@ export class SpeechRecognitionService {
   public getCurrentTranscript(): string {
     return (this.currentTranscript.trim() || this.accumulatedTranscript.trim());
   }
-
-  /**
-   * Fast serverless STT fallback using Puter.js
-   */
-  public async transcribeAudioBlobWithPuter(blob: Blob): Promise<string> {
-    try {
-      const puter = typeof window !== 'undefined' ? (window as any).puter : null;
-      if (puter?.ai?.speech2txt) {
-        // 5s timeout max to avoid hanging user
-        const res = await Promise.race([
-          puter.ai.speech2txt(blob),
-          new Promise((_, reject) => setTimeout(() => reject(new Error('Puter timeout')), 4500)),
-        ]);
-        if (typeof res === 'string') return res.trim();
-        if (res && typeof (res as any).text === 'string') return (res as any).text.trim();
-      }
-    } catch (e) {
-      console.warn('Puter STT timeout/fallback:', e);
-    }
-    return '';
-  }
 }
 
 export const speechRecognitionHelper = new SpeechRecognitionService();

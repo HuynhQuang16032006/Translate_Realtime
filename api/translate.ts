@@ -42,8 +42,47 @@ export default async function handler(req: any, res: any) {
   const { audioBase64, mimeType, speakerLang, textOnly, clientTranscript, userApiKey } = req.body || {};
   const apiKey = (userApiKey || process.env.GEMINI_API_KEY || '').trim();
 
-  // Diagnostic GET
+  // Diagnostic GET or High-Speed Neural TTS Audio Stream
   if (req.method === 'GET') {
+    let ttsText = '';
+    let ttsLang = 'vi';
+    try {
+      const urlObj = new URL(req.url, 'http://localhost');
+      ttsText = urlObj.searchParams.get('tts') || '';
+      ttsLang = urlObj.searchParams.get('lang') || 'vi';
+    } catch (e) {
+      if (req.query) {
+        ttsText = req.query.tts || '';
+        ttsLang = req.query.lang || 'vi';
+      }
+    }
+
+    if (ttsText) {
+      try {
+        const langCode = ttsLang === 'zh' ? 'zh-CN' : ttsLang === 'en' ? 'en' : 'vi';
+        const ttsUrl = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(ttsText)}&tl=${langCode}&client=tw-ob`;
+        const ttsResp = await fetch(ttsUrl, {
+          headers: {
+            'User-Agent':
+              'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          },
+          signal: AbortSignal.timeout(4000),
+        });
+
+        if (ttsResp.ok) {
+          const arrayBuf = await ttsResp.arrayBuffer();
+          res.setHeader('Content-Type', 'audio/mpeg');
+          res.setHeader('Cache-Control', 'public, max-age=86400');
+          if (typeof res.send === 'function') {
+            return res.send(Buffer.from(arrayBuf));
+          }
+          return res.end(Buffer.from(arrayBuf));
+        }
+      } catch (err) {
+        console.warn('TTS proxy error:', err);
+      }
+    }
+
     return sendResponse(200, {
       status: 'active',
       hasApiKey: !!apiKey,

@@ -16,7 +16,7 @@ export default defineConfig(({ mode }) => {
         name: 'local-api-translate-middleware',
         configureServer(server) {
           server.middlewares.use(async (req, res, next) => {
-            if (req.url === '/api/translate') {
+            if (req.url && req.url.startsWith('/api/translate')) {
               // Ensure Node http.ServerResponse has Express/Vercel helper functions
               if (!(res as any).status) {
                 (res as any).status = function (code: number) {
@@ -32,15 +32,8 @@ export default defineConfig(({ mode }) => {
                 };
               }
 
-              // Handle GET requests (like diagnostics)
+              // Handle GET requests (diagnostics and TTS audio streaming)
               if (req.method === 'GET') {
-                if (!process.env.GEMINI_API_KEY) {
-                  const proxyRes = await fetch('https://www.transrealtime.online/api/translate', { method: 'GET' });
-                  res.statusCode = proxyRes.status;
-                  res.setHeader('Content-Type', 'application/json');
-                  const text = await proxyRes.text();
-                  return res.end(text);
-                }
                 return handler(req, res);
               }
 
