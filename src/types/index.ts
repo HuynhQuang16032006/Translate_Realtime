@@ -35,7 +35,7 @@ export type OperationMode = 'vad' | 'ptt'; // 'vad' = Smart Proximity Auto, 'ptt
 export type ConnectionStatus = 'connected' | 'connecting' | 'reconnecting' | 'disconnected' | 'error';
 
 export interface MqttMessage {
-  type: 'LOCK_ROOM' | 'UNLOCK_ROOM' | 'TRANSLATION' | 'USER_JOIN' | 'HEARTBEAT' | 'EMERGENCY_UNLOCK';
+  type: 'LOCK_ROOM' | 'UNLOCK_ROOM' | 'TRANSLATION' | 'USER_JOIN' | 'HEARTBEAT' | 'EMERGENCY_UNLOCK' | 'DELETE_MESSAGE';
   senderId: string;
   senderName?: string;
   timestamp: number;

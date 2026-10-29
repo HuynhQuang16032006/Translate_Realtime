@@ -12,6 +12,7 @@ interface AudioControlsProps {
   currentLang: Language;
   onStartManualRecord: () => void;
   onStopManualRecord: () => void;
+  onCancelRecord?: () => void;
   onSendText: (text: string) => void;
   onOpenCalibration: () => void;
   vadThresholdDb: number;
@@ -27,6 +28,7 @@ export const AudioControls: React.FC<AudioControlsProps> = ({
   currentLang,
   onStartManualRecord,
   onStopManualRecord,
+  onCancelRecord,
   onSendText,
   onOpenCalibration,
   vadThresholdDb,
@@ -63,23 +65,56 @@ export const AudioControls: React.FC<AudioControlsProps> = ({
     }
   };
 
+  const handleEditLiveTranscript = () => {
+    if (liveTranscript) {
+      setInputText(liveTranscript);
+      onCancelRecord?.();
+    }
+  };
+
   return (
     <div className="bg-slate-900/95 border-t border-slate-800 safe-bottom px-3 sm:px-4 py-3">
       <div className="max-w-3xl mx-auto space-y-2.5">
         {/* Live Speech Recognition Transcript Pill (While recording) */}
         {isRecording && (
-          <div className="w-full bg-rose-950/60 border border-rose-500/40 rounded-xl px-3 py-2 text-xs flex items-center gap-2 animate-in fade-in duration-150">
-            <span className="w-2 h-2 rounded-full bg-rose-500 animate-ping shrink-0" />
-            <span className="text-slate-300 truncate">
-              {liveTranscript ? (
-                <>
-                  <span className="text-rose-300 font-semibold mr-1.5">Đang nhận diện:</span>
-                  <span className="text-white">"{liveTranscript}"</span>
-                </>
-              ) : (
-                <span className="text-slate-400 italic">Đang lắng nghe giọng nói của bạn...</span>
+          <div className="w-full bg-rose-950/70 border border-rose-500/50 rounded-xl px-3 py-2 text-xs flex items-center justify-between gap-2 animate-in fade-in duration-150">
+            <div className="flex items-center gap-2 truncate min-w-0">
+              <span className="w-2 h-2 rounded-full bg-rose-500 animate-ping shrink-0" />
+              <span className="text-slate-300 truncate">
+                {liveTranscript ? (
+                  <>
+                    <span className="text-rose-300 font-semibold mr-1.5">Đang nhận diện:</span>
+                    <span className="text-white">"{liveTranscript}"</span>
+                  </>
+                ) : (
+                  <span className="text-slate-400 italic">Đang lắng nghe giọng nói của bạn...</span>
+                )}
+              </span>
+            </div>
+
+            {/* Quick action buttons if AI misheard */}
+            <div className="flex items-center gap-1.5 shrink-0">
+              {liveTranscript && (
+                <button
+                  type="button"
+                  onClick={handleEditLiveTranscript}
+                  title="Chuyển câu này vào ô nhập để sửa trước khi gửi"
+                  className="px-2 py-0.5 bg-blue-600/50 hover:bg-blue-600 text-blue-200 hover:text-white rounded-lg text-[11px] font-medium transition"
+                >
+                  Sửa câu
+                </button>
               )}
-            </span>
+              {onCancelRecord && (
+                <button
+                  type="button"
+                  onClick={onCancelRecord}
+                  title="Hủy bỏ, không gửi câu này"
+                  className="px-2 py-0.5 bg-rose-900/60 hover:bg-rose-700 text-rose-300 hover:text-white rounded-lg text-[11px] font-medium transition"
+                >
+                  Hủy
+                </button>
+              )}
+            </div>
           </div>
         )}
 

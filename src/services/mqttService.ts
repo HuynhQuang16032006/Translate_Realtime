@@ -9,6 +9,7 @@ export interface MqttServiceOptions {
   onStatusChange: (status: ConnectionStatus) => void;
   onMessage: (msg: TranslationMessage) => void;
   onLockStateChange: (state: RoomLockState) => void;
+  onDeleteMessage?: (messageId: string) => void;
 }
 
 export class MqttSyncService {
@@ -125,6 +126,13 @@ export class MqttSyncService {
         break;
       }
 
+      case 'DELETE_MESSAGE': {
+        if (msg.payload?.messageId && this.options.onDeleteMessage) {
+          this.options.onDeleteMessage(msg.payload.messageId);
+        }
+        break;
+      }
+
       default:
         break;
     }
@@ -223,6 +231,20 @@ export class MqttSyncService {
       senderName: this.options.userName,
       timestamp: Date.now(),
       payload: translation,
+    };
+
+    this.publish(message);
+  }
+
+  /**
+   * Broadcast message recall/deletion across all room participants
+   */
+  public broadcastDeleteMessage(messageId: string): void {
+    const message: MqttMessage = {
+      type: 'DELETE_MESSAGE',
+      senderId: this.options.peerId,
+      timestamp: Date.now(),
+      payload: { messageId },
     };
 
     this.publish(message);

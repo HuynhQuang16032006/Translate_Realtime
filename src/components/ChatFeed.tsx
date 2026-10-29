@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import { Volume2, VolumeX, MessageSquare, Globe } from 'lucide-react';
+import { Volume2, VolumeX, MessageSquare, Globe, Trash2 } from 'lucide-react';
 import type { Language, TranslationMessage } from '../types';
 import { t } from '../locales/i18n';
 
@@ -9,6 +9,7 @@ interface ChatFeedProps {
   currentLang: Language;
   onPlayAudio: (text: string, lang: Language) => void;
   speakingMessageId: string | null;
+  onDeleteMessage?: (id: string) => void;
 }
 
 // Generate consistent avatar colors based on sender name
@@ -33,6 +34,7 @@ export const ChatFeed: React.FC<ChatFeedProps> = ({
   currentLang,
   onPlayAudio,
   speakingMessageId,
+  onDeleteMessage,
 }) => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -139,27 +141,40 @@ export const ChatFeed: React.FC<ChatFeedProps> = ({
                       {msg.detectedLang.toUpperCase()} → {currentLang.toUpperCase()}
                     </span>
 
-                    <button
-                      onClick={() => onPlayAudio(translatedText, currentLang)}
-                      title="Bấm để nghe đọc lại câu thoại"
-                      className={`p-1 px-1.5 rounded-lg transition flex items-center gap-1 text-[11px] font-medium ${
-                        isMe
-                          ? 'hover:bg-blue-700/70 text-blue-100'
-                          : 'hover:bg-slate-700 text-slate-300'
-                      } ${isPlaying ? 'animate-pulse text-amber-300' : ''}`}
-                    >
-                      {isPlaying ? (
-                        <>
-                          <VolumeX className="w-3 h-3" />
-                          <span>{t('chat_speaking_btn', currentLang)}</span>
-                        </>
-                      ) : (
-                        <>
-                          <Volume2 className="w-3 h-3" />
-                          <span>{t('chat_speak_btn', currentLang)}</span>
-                        </>
+                    <div className="flex items-center gap-1.5">
+                      {isMe && onDeleteMessage && (
+                        <button
+                          onClick={() => onDeleteMessage(msg.id)}
+                          title="Thu hồi / Xóa câu này nếu AI nghe sai"
+                          className="p-1 px-1.5 rounded-lg hover:bg-rose-600/30 text-rose-300 hover:text-white transition flex items-center gap-1 text-[10px]"
+                        >
+                          <Trash2 className="w-3 h-3" />
+                          <span>Thu hồi</span>
+                        </button>
                       )}
-                    </button>
+
+                      <button
+                        onClick={() => onPlayAudio(translatedText, currentLang)}
+                        title="Bấm để nghe đọc lại câu thoại"
+                        className={`p-1 px-1.5 rounded-lg transition flex items-center gap-1 text-[11px] font-medium ${
+                          isMe
+                            ? 'hover:bg-blue-700/70 text-blue-100'
+                            : 'hover:bg-slate-700 text-slate-300'
+                        } ${isPlaying ? 'animate-pulse text-amber-300' : ''}`}
+                      >
+                        {isPlaying ? (
+                          <>
+                            <VolumeX className="w-3 h-3" />
+                            <span>{t('chat_speaking_btn', currentLang)}</span>
+                          </>
+                        ) : (
+                          <>
+                            <Volume2 className="w-3 h-3" />
+                            <span>{t('chat_speak_btn', currentLang)}</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
                   </div>
                 </div>
 

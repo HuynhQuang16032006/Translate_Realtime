@@ -189,9 +189,14 @@ export const App: React.FC = () => {
   // Ultra-low latency client direct translator (100ms response time)
   const freeTranslateDirect = async (text: string, targetLang: string): Promise<string> => {
     try {
+      // If client is in Chinese language mode, direct Google connection is blocked in mainland China.
+      // Immediately return empty to route through /api/translate proxy via Cloudflare with zero delay!
+      if (userRef.current.lang === 'zh') {
+        return '';
+      }
       const code = targetLang === 'zh' ? 'zh-CN' : targetLang === 'en' ? 'en' : 'vi';
       const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=${code}&dt=t&q=${encodeURIComponent(text)}`;
-      const resp = await fetch(url, { signal: AbortSignal.timeout(1200) });
+      const resp = await fetch(url, { signal: AbortSignal.timeout(350) });
       const data = (await resp.json()) as any;
       return data[0]?.map((s: any) => s[0]).join('') || text;
     } catch (e) {
@@ -459,9 +464,27 @@ export const App: React.FC = () => {
       onStatusChange: (status) => setConnectionStatus(status),
       onMessage: handleIncomingTranslation,
       onLockStateChange: (state) => setLockState(state),
+      onDeleteMessage: (msgId) => {
+        setMessages((prev) => prev.filter((m) => m.id !== msgId));
+      },
     });
     mqttService.connect();
     mqttServiceRef.current = mqttService;
+  };
+
+  // Recall / Delete message across all room participants
+  const handleDeleteMessage = (messageId: string) => {
+    setMessages((prev) => prev.filter((m) => m.id !== messageId));
+    mqttServiceRef.current?.broadcastDeleteMessage(messageId);
+  };
+
+  // Cancel current recording (if AI misheard before sending)
+  const handleCancelRecord = () => {
+    speechRecognitionHelper.stop();
+    audioRecorderRef.current?.stop();
+    setIsRecording(false);
+    setLiveTranscript('');
+    mqttServiceRef.current?.broadcastUnlock();
   };
 
   // Manual Push-to-Talk (PTT) Start
@@ -668,6 +691,7 @@ export const App: React.FC = () => {
         currentLang={user.lang}
         onPlayAudio={handlePlayMessageAudio}
         speakingMessageId={speakingMessageId}
+        onDeleteMessage={handleDeleteMessage}
       />
 
       {/* Bottom Audio & Quick Text Controller (PTT or VAD) */}
@@ -680,6 +704,7 @@ export const App: React.FC = () => {
         currentLang={user.lang}
         onStartManualRecord={handleStartManualRecord}
         onStopManualRecord={handleStopManualRecord}
+        onCancelRecord={handleCancelRecord}
         onSendText={handleSendTextMessage}
         onOpenCalibration={() => setIsCalibrationOpen(true)}
         vadThresholdDb={vadThresholdDb}
