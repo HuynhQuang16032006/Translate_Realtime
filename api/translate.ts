@@ -53,9 +53,9 @@ Nhiệm vụ:
    - Nếu nghe thấy bất kỳ từ ngữ, câu nói nào dù ngắn (ví dụ: "chào bạn", "giá này bao nhiêu", "你好", "hello", "ok", "máy móc", "hợp đồng"...), bạn BẮT BUỘC nhận diện, dịch và đặt "is_noise_or_empty": false.
    - CHỈ đặt "is_noise_or_empty": true nếu đoạn âm thanh HOÀN TOÀN KHÔNG CÓ TIẾNG NGƯỜI NÓI (chỉ là tiếng thở dài, tiếng im lặng hoặc tiếng gõ kim loại vô nghĩa).`;
 
-    // Try primary active models: gemini-2.0-flash -> fallback to gemini-1.5-flash
-    const candidateModels = ['gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-2.5-flash'];
-    let lastError: any = null;
+    // Try candidate models
+    const candidateModels = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'];
+    const modelErrors: Record<string, string> = {};
     let responseText = '';
 
     for (const modelName of candidateModels) {
@@ -108,13 +108,15 @@ Nhiệm vụ:
           break; // Succeeded!
         }
       } catch (err: any) {
-        lastError = err;
-        console.warn(`Thử model ${modelName} thất bại, thử model tiếp theo...`, err?.message || err);
+        modelErrors[modelName] = err?.message || String(err);
       }
     }
 
     if (!responseText) {
-      throw lastError || new Error('Không thể kết nối đến AI Gemini.');
+      return res.status(500).json({
+        error: 'Tất cả các model AI đều thất bại',
+        modelErrors,
+      });
     }
 
     const parsed = JSON.parse(responseText);
