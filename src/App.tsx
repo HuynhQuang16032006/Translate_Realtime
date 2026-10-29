@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import type { Language, OperationMode, RoomLockState, TranslationMessage, ConnectionStatus, User } from './types';
+import type { Language, RoomLockState, TranslationMessage, ConnectionStatus, User } from './types';
 import { AudioDspEngine } from './services/audioDsp';
 import { CrossBrowserAudioRecorder } from './services/mediaRecorderHelper';
 import type { AudioRecordResult } from './services/mediaRecorderHelper';
@@ -13,10 +13,9 @@ import { LiveStatusBar } from './components/LiveStatusBar';
 import { ChatFeed } from './components/ChatFeed';
 import { AudioControls } from './components/AudioControls';
 import { QrModal } from './components/QrModal';
-import { CalibrationModal } from './components/CalibrationModal';
 import { JoinRoomScreen } from './components/JoinRoomScreen';
 import { LiveSpeechPopup } from './components/LiveSpeechPopup';
-import { ApiKeyModal } from './components/ApiKeyModal';
+import { ExportModal } from './components/ExportModal';
 
 export const App: React.FC = () => {
   // Session & User State
@@ -41,8 +40,7 @@ export const App: React.FC = () => {
     lockedAt: null,
   });
 
-  // App Operation State
-  const [operationMode, setOperationMode] = useState<OperationMode>('ptt'); // Start with PTT for optimal noise rejection, switchable to VAD
+  // App Operation State (Push-to-Talk only for exhibition hall noise immunity)
   const [messages, setMessages] = useState<TranslationMessage[]>([]);
   const [isRecording, setIsRecording] = useState<boolean>(false);
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
@@ -65,7 +63,7 @@ export const App: React.FC = () => {
   // Audio DSP & VAD Visualizer
   const [audioLevelNormalized, setAudioLevelNormalized] = useState<number>(0);
   const [thresholdNormalized, setThresholdNormalized] = useState<number>(50);
-  const [vadThresholdDb, setVadThresholdDb] = useState<number>(-38);
+  const vadThresholdDb = -38;
 
   // Toast Error Alert State
   const [toastError, setToastError] = useState<string | null>(null);
@@ -79,11 +77,7 @@ export const App: React.FC = () => {
 
   // Modals
   const [isQrOpen, setIsQrOpen] = useState<boolean>(false);
-  const [isCalibrationOpen, setIsCalibrationOpen] = useState<boolean>(false);
-  const [isApiKeyOpen, setIsApiKeyOpen] = useState<boolean>(false);
-  const [customApiKey, setCustomApiKey] = useState<string>(() => {
-    return typeof window !== 'undefined' ? localStorage.getItem('expotrans_gemini_api_key') || '' : '';
-  });
+  const [isExportOpen, setIsExportOpen] = useState<boolean>(false);
   const [liveTranscript, setLiveTranscript] = useState<string>('');
 
   useEffect(() => {
@@ -108,8 +102,6 @@ export const App: React.FC = () => {
   userRef.current = user;
   const autoSpeakRef = useRef(autoSpeak);
   autoSpeakRef.current = autoSpeak;
-  const operationModeRef = useRef(operationMode);
-  operationModeRef.current = operationMode;
   const isRecordingRef = useRef(isRecording);
   isRecordingRef.current = isRecording;
   const isProcessingRef = useRef(isProcessing);
@@ -201,7 +193,6 @@ export const App: React.FC = () => {
       const payload: any = {
         speakerLang: userRef.current.lang,
         clientTranscript: trimmedText,
-        userApiKey: customApiKey,
       };
 
       if (!trimmedText && recordResult?.audioBase64) {
@@ -282,63 +273,9 @@ export const App: React.FC = () => {
     }
   };
 
-  // VAD Voice Start Handler
-  const handleVoiceStart = useCallback(() => {
-    if (operationModeRef.current !== 'vad') return;
-    if (isRecordingRef.current || isProcessingRef.current) return;
-    if (isSpeakingTtsRef.current) return; // Anti-Echo Protection while reading
-    if (lockStateRef.current.isLocked && lockStateRef.current.lockedBy !== userRef.current.id) {
-      return;
-    }
-
-    const acquired = mqttServiceRef.current?.broadcastLock();
-    if (!acquired) return;
-
-    if (mediaStreamRef.current && audioRecorderRef.current) {
-      audioRecorderRef.current.start(mediaStreamRef.current);
-      speechRecognitionHelper.start(userRef.current.lang);
-      setIsRecording(true);
-    }
-  }, []);
-
-  // VAD Voice End Handler (1.2s silence)
-  const handleVoiceEnd = useCallback(async () => {
-    if (operationModeRef.current !== 'vad') return;
-    if (!isRecordingRef.current) return;
-
-    setIsRecording(false);
-
-    // Instant shortcut: if speech recognition already captured text while user was speaking
-    const instantTranscript = (speechRecognitionHelper.getCurrentTranscript() || liveTranscript || '').trim();
-    if (instantTranscript) {
-      speechRecognitionHelper.stop();
-      audioRecorderRef.current?.stop();
-      await processAndTranslateAudio(null, instantTranscript);
-      return;
-    }
-
-    if (audioRecorderRef.current) {
-      const [recordResult, clientTranscript] = await Promise.all([
-        audioRecorderRef.current.stop(),
-        speechRecognitionHelper.stop(),
-      ]);
-
-      let textToUse = (clientTranscript || speechRecognitionHelper.getCurrentTranscript() || liveTranscript || '').trim();
-
-      // Free serverless STT fallback if browser Web Speech API did not capture audio
-      if (!textToUse && recordResult?.blob) {
-        textToUse = await speechRecognitionHelper.transcribeAudioBlobWithPuter(recordResult.blob);
-      }
-
-      if (textToUse) {
-        await processAndTranslateAudio(null, textToUse);
-      } else if (recordResult) {
-        await processAndTranslateAudio(recordResult, '');
-      } else {
-        mqttServiceRef.current?.broadcastUnlock();
-      }
-    }
-  }, [liveTranscript]);
+  // VAD Voice Handlers (Auto-trigger disabled for exhibition noise immunity; PTT is used)
+  const handleVoiceStart = useCallback(() => {}, []);
+  const handleVoiceEnd = useCallback(async () => {}, []);
 
   // Join Room Execution
   const handleJoinRoom = async (name: string, room: string, lang: Language) => {
@@ -421,7 +358,6 @@ export const App: React.FC = () => {
 
   // Manual Push-to-Talk (PTT) Start
   const handleStartManualRecord = () => {
-    if (operationMode !== 'ptt') return;
     if (isRecording || isProcessing) return;
     if (lockState.isLocked && lockState.lockedBy !== user.id) return;
 
@@ -444,7 +380,6 @@ export const App: React.FC = () => {
 
   // Manual Push-to-Talk (PTT) Stop
   const handleStopManualRecord = async () => {
-    if (operationMode !== 'ptt') return;
     if (!isRecording) return;
 
     setIsRecording(false);
@@ -509,20 +444,6 @@ export const App: React.FC = () => {
   // Emergency room unlock
   const handleEmergencyUnlock = () => {
     mqttServiceRef.current?.broadcastEmergencyUnlock();
-  };
-
-  // Run Noise Floor Calibration
-  const handleRunAutoCalibrate = async (): Promise<number> => {
-    if (!dspEngineRef.current) return -40;
-    const recommended = await dspEngineRef.current.calibrateNoiseFloor();
-    setVadThresholdDb(recommended);
-    return recommended;
-  };
-
-  // Save manual dB threshold
-  const handleSaveThreshold = (db: number) => {
-    setVadThresholdDb(db);
-    dspEngineRef.current?.updateConfig({ thresholdDb: db });
   };
 
   // Leave room and return to entrance screen
@@ -594,13 +515,10 @@ export const App: React.FC = () => {
         connectionStatus={connectionStatus}
         currentLang={user.lang}
         onLanguageChange={(newLang) => setUser((prev) => ({ ...prev, lang: newLang }))}
-        mode={operationMode}
-        onModeToggle={() => setOperationMode((prev) => (prev === 'vad' ? 'ptt' : 'vad'))}
         autoSpeak={autoSpeak}
         onAutoSpeakToggle={() => setAutoSpeak((prev) => !prev)}
         onOpenQr={() => setIsQrOpen(true)}
-        onOpenCalibration={() => setIsCalibrationOpen(true)}
-        onOpenApiKey={() => setIsApiKeyOpen(true)}
+        onOpenExport={() => setIsExportOpen(true)}
         onLeaveRoom={handleLeaveRoom}
       />
 
@@ -626,9 +544,8 @@ export const App: React.FC = () => {
         onDeleteMessage={handleDeleteMessage}
       />
 
-      {/* Bottom Audio & Quick Text Controller (PTT or VAD) */}
+      {/* Bottom Audio & Quick Text Controller (PTT) */}
       <AudioControls
-        mode={operationMode}
         isRecording={isRecording}
         isProcessing={isProcessing}
         lockState={lockState}
@@ -638,8 +555,6 @@ export const App: React.FC = () => {
         onStopManualRecord={handleStopManualRecord}
         onCancelRecord={handleCancelRecord}
         onSendText={handleSendTextMessage}
-        onOpenCalibration={() => setIsCalibrationOpen(true)}
-        vadThresholdDb={vadThresholdDb}
         liveTranscript={liveTranscript}
       />
 
@@ -651,28 +566,13 @@ export const App: React.FC = () => {
         currentLang={user.lang}
       />
 
-      {/* Noise Calibration Modal */}
-      <CalibrationModal
-        isOpen={isCalibrationOpen}
-        onClose={() => setIsCalibrationOpen(false)}
-        currentThreshold={vadThresholdDb}
+      {/* Export Conversation Modal */}
+      <ExportModal
+        isOpen={isExportOpen}
+        onClose={() => setIsExportOpen(false)}
+        messages={messages}
+        roomId={roomId}
         currentLang={user.lang}
-        onSaveThreshold={handleSaveThreshold}
-        onRunAutoCalibrate={handleRunAutoCalibrate}
-      />
-
-      {/* Custom Gemini API Key Settings Modal */}
-      <ApiKeyModal
-        isOpen={isApiKeyOpen}
-        onClose={() => setIsApiKeyOpen(false)}
-        currentLang={user.lang}
-        savedKey={customApiKey}
-        onSaveKey={(key) => {
-          setCustomApiKey(key);
-          if (typeof window !== 'undefined') {
-            localStorage.setItem('expotrans_gemini_api_key', key);
-          }
-        }}
       />
     </div>
   );

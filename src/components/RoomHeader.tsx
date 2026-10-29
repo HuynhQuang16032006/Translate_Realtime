@@ -1,6 +1,6 @@
 import React from 'react';
-import { QrCode, Volume2, VolumeX, Mic, Hand, Sliders, LogOut, Key, Wifi, WifiOff } from 'lucide-react';
-import type { ConnectionStatus, Language, OperationMode } from '../types';
+import { QrCode, Volume2, VolumeX, Download, LogOut, Wifi, WifiOff } from 'lucide-react';
+import type { ConnectionStatus, Language } from '../types';
 import { t } from '../locales/i18n';
 
 interface RoomHeaderProps {
@@ -8,13 +8,10 @@ interface RoomHeaderProps {
   connectionStatus: ConnectionStatus;
   currentLang: Language;
   onLanguageChange: (lang: Language) => void;
-  mode: OperationMode;
-  onModeToggle: () => void;
   autoSpeak: boolean;
   onAutoSpeakToggle: () => void;
   onOpenQr: () => void;
-  onOpenCalibration: () => void;
-  onOpenApiKey: () => void;
+  onOpenExport: () => void;
   onLeaveRoom: () => void;
 }
 
@@ -23,13 +20,10 @@ export const RoomHeader: React.FC<RoomHeaderProps> = ({
   connectionStatus,
   currentLang,
   onLanguageChange,
-  mode,
-  onModeToggle,
   autoSpeak,
   onAutoSpeakToggle,
   onOpenQr,
-  onOpenCalibration,
-  onOpenApiKey,
+  onOpenExport,
   onLeaveRoom,
 }) => {
   return (
@@ -95,29 +89,6 @@ export const RoomHeader: React.FC<RoomHeaderProps> = ({
             </select>
           </div>
 
-          {/* Mode Switch: VAD vs PTT */}
-          <button
-            onClick={onModeToggle}
-            title={mode === 'vad' ? t('mode_vad_tooltip', currentLang) : t('mode_ptt_tooltip', currentLang)}
-            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium border transition shrink-0 ${
-              mode === 'vad'
-                ? 'bg-blue-600/20 text-blue-300 border-blue-500/30 hover:bg-blue-600/30'
-                : 'bg-amber-600/20 text-amber-300 border-amber-500/30 hover:bg-amber-600/30'
-            }`}
-          >
-            {mode === 'vad' ? (
-              <>
-                <Mic className="w-3.5 h-3.5 text-blue-400" />
-                <span>{t('mode_vad', currentLang)}</span>
-              </>
-            ) : (
-              <>
-                <Hand className="w-3.5 h-3.5 text-amber-400" />
-                <span>{t('mode_ptt', currentLang)}</span>
-              </>
-            )}
-          </button>
-
           {/* Auto-Speech Toggle (Default ON for instant speech playback) */}
           <button
             onClick={onAutoSpeakToggle}
@@ -141,16 +112,15 @@ export const RoomHeader: React.FC<RoomHeaderProps> = ({
             )}
           </button>
 
-          {/* Noise Calibration Button */}
-          {mode === 'vad' && (
-            <button
-              onClick={onOpenCalibration}
-              title={t('btn_calibrate', currentLang)}
-              className="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 rounded-lg transition shrink-0"
-            >
-              <Sliders className="w-4 h-4" />
-            </button>
-          )}
+          {/* Export / Save Conversation Button */}
+          <button
+            onClick={onOpenExport}
+            title={t('btn_export', currentLang)}
+            className="flex items-center gap-1 px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-lg transition text-xs font-semibold shrink-0"
+          >
+            <Download className="w-3.5 h-3.5 text-indigo-400" />
+            <span>{t('btn_export', currentLang)}</span>
+          </button>
 
           {/* QR Code Share Button */}
           <button
@@ -160,15 +130,6 @@ export const RoomHeader: React.FC<RoomHeaderProps> = ({
           >
             <QrCode className="w-3.5 h-3.5" />
             <span>{t('btn_qr', currentLang)}</span>
-          </button>
-
-          {/* API Key Settings Button */}
-          <button
-            onClick={onOpenApiKey}
-            title="Cài đặt khóa Gemini API"
-            className="p-1.5 bg-slate-800 hover:bg-slate-700 text-amber-400 border border-slate-700 rounded-lg transition shrink-0"
-          >
-            <Key className="w-4 h-4" />
           </button>
 
           {/* Leave Room Button */}

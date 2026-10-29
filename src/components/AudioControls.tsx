@@ -1,10 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { Mic, MicOff, Square, Send, Sliders } from 'lucide-react';
-import type { Language, OperationMode, RoomLockState } from '../types';
+import { Mic, MicOff, Square, Send } from 'lucide-react';
+import type { Language, RoomLockState } from '../types';
 import { t } from '../locales/i18n';
 
 interface AudioControlsProps {
-  mode: OperationMode;
   isRecording: boolean;
   isProcessing: boolean;
   lockState: RoomLockState;
@@ -14,13 +13,10 @@ interface AudioControlsProps {
   onStopManualRecord: () => void;
   onCancelRecord?: () => void;
   onSendText: (text: string) => void;
-  onOpenCalibration: () => void;
-  vadThresholdDb: number;
   liveTranscript?: string;
 }
 
 export const AudioControls: React.FC<AudioControlsProps> = ({
-  mode,
   isRecording,
   isProcessing,
   lockState,
@@ -30,8 +26,6 @@ export const AudioControls: React.FC<AudioControlsProps> = ({
   onStopManualRecord,
   onCancelRecord,
   onSendText,
-  onOpenCalibration,
-  vadThresholdDb,
   liveTranscript,
 }) => {
   const isLockedByOther = lockState.isLocked && lockState.lockedBy !== currentUserId;
@@ -145,59 +139,49 @@ export const AudioControls: React.FC<AudioControlsProps> = ({
             </button>
           )}
 
-          {/* Big Voice Button */}
-          {mode === 'ptt' ? (
-            <button
-              disabled={isLockedByOther || isProcessing}
-              onClick={() => {
-                if (isRecording) {
-                  onStopManualRecord();
-                } else {
-                  onStartManualRecord();
-                }
-              }}
-              title={isRecording ? t('audio_stop_and_translate', currentLang) : t('audio_click_to_speak', currentLang)}
-              className={`px-4 sm:px-6 py-3 rounded-2xl font-bold text-xs sm:text-sm transition-all shadow-lg flex items-center justify-center gap-2 select-none active:scale-[0.98] shrink-0 ${
-                isLockedByOther
-                  ? 'bg-slate-800 text-slate-500 border border-slate-700 cursor-not-allowed'
-                  : isRecording
-                  ? 'bg-rose-600 hover:bg-rose-500 text-white shadow-rose-600/40 ring-4 ring-rose-500/30 animate-pulse'
-                  : isProcessing
-                  ? 'bg-blue-800 text-blue-200 cursor-wait'
-                  : 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white shadow-blue-500/30'
-              }`}
-            >
-              {isLockedByOther ? (
-                <>
-                  <MicOff className="w-4 h-4 text-slate-500" />
-                  <span className="hidden sm:inline">{lockState.speakerName || t('audio_mic_busy', currentLang)}</span>
-                </>
-              ) : isProcessing ? (
-                <>
-                  <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                  <span>{t('ptt_processing', currentLang)}</span>
-                </>
-              ) : isRecording ? (
-                <>
-                  <Square className="w-4 h-4 fill-current animate-bounce" />
-                  <span>{t('audio_stop_and_translate_sec', currentLang, { sec: recordDuration })}</span>
-                </>
-              ) : (
-                <>
-                  <Mic className="w-4 h-4" />
-                  <span>{t('audio_click_to_speak', currentLang)}</span>
-                </>
-              )}
-            </button>
-          ) : (
-            <button
-              onClick={onOpenCalibration}
-              className="p-3 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-blue-400 rounded-2xl transition shrink-0"
-              title={t('audio_vad_sensitivity_tooltip', currentLang, { db: vadThresholdDb })}
-            >
-              <Sliders className="w-5 h-5" />
-            </button>
-          )}
+          {/* Big Voice Button (PTT) */}
+          <button
+            disabled={isLockedByOther || isProcessing}
+            onClick={() => {
+              if (isRecording) {
+                onStopManualRecord();
+              } else {
+                onStartManualRecord();
+              }
+            }}
+            title={isRecording ? t('audio_stop_and_translate', currentLang) : t('audio_click_to_speak', currentLang)}
+            className={`px-4 sm:px-6 py-3 rounded-2xl font-bold text-xs sm:text-sm transition-all shadow-lg flex items-center justify-center gap-2 select-none active:scale-[0.98] shrink-0 ${
+              isLockedByOther
+                ? 'bg-slate-800 text-slate-500 border border-slate-700 cursor-not-allowed'
+                : isRecording
+                ? 'bg-rose-600 hover:bg-rose-500 text-white shadow-rose-600/40 ring-4 ring-rose-500/30 animate-pulse'
+                : isProcessing
+                ? 'bg-blue-800 text-blue-200 cursor-wait'
+                : 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white shadow-blue-500/30'
+            }`}
+          >
+            {isLockedByOther ? (
+              <>
+                <MicOff className="w-4 h-4 text-slate-500" />
+                <span className="hidden sm:inline">{lockState.speakerName || t('audio_mic_busy', currentLang)}</span>
+              </>
+            ) : isProcessing ? (
+              <>
+                <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                <span>{t('ptt_processing', currentLang)}</span>
+              </>
+            ) : isRecording ? (
+              <>
+                <Square className="w-4 h-4 fill-current animate-bounce" />
+                <span>{t('audio_stop_and_translate_sec', currentLang, { sec: recordDuration })}</span>
+              </>
+            ) : (
+              <>
+                <Mic className="w-4 h-4" />
+                <span>{t('audio_click_to_speak', currentLang)}</span>
+              </>
+            )}
+          </button>
         </div>
       </div>
     </div>

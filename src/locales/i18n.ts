@@ -35,6 +35,7 @@ export const translations = {
     auto_speak_off: 'Tự động phát: TẮT',
     auto_speak_tooltip: 'Tự động đọc bản dịch khi có người nói trong phòng',
     btn_qr: 'Mã QR',
+    btn_export: 'Lưu hội thoại',
     btn_calibrate: 'Lọc ồn',
     btn_leave: 'Rời phòng',
 
@@ -94,6 +95,19 @@ export const translations = {
     qr_copied: 'Đã sao chép link!',
     qr_close: 'Đóng',
 
+    // Export Modal
+    export_title: 'Lưu Cuộc Hội Thoại',
+    export_subtitle: 'Lưu lại toàn bộ nội dung đàm phán để làm biên bản hoặc gửi cho đối tác',
+    export_total_msgs: 'Tổng cộng: {count} câu thoại trong phòng',
+    export_empty: 'Chưa có câu thoại nào trong phòng để lưu.',
+    export_txt_btn: 'Tải file Văn bản (.TXT)',
+    export_txt_desc: 'Nhẹ, mở được ngay trên mọi điện thoại, dễ copy vào Zalo/WeChat',
+    export_copy_btn: 'Sao chép toàn bộ hội thoại',
+    export_copied: 'Đã sao chép vào khay nhớ tạm!',
+    export_html_btn: 'Tải Báo cáo In / PDF (.HTML)',
+    export_html_desc: 'Định dạng song ngữ chuyên nghiệp, có thể in hoặc lưu thành file PDF',
+    export_close: 'Đóng',
+
     // Noise Calibration Modal
     calib_title: 'Cân Chỉnh Lọc Ồn Môi Trường',
     calib_desc: 'Đo tiếng ồn nền xung quanh để hệ thống không bị kích hoạt nhầm bởi tiếng ồn xung quanh.',
@@ -150,6 +164,7 @@ export const translations = {
     auto_speak_off: '语音播报: 关闭',
     auto_speak_tooltip: '房间内有发言时自动播放您所选语言的翻译声音',
     btn_qr: '邀请码',
+    btn_export: '保存记录',
     btn_calibrate: '降噪校准',
     btn_leave: '退出',
 
@@ -209,6 +224,19 @@ export const translations = {
     qr_copied: '已复制链接！',
     qr_close: '关闭',
 
+    // Export Modal
+    export_title: '保存与导出对话记录',
+    export_subtitle: '完整保存现场沟通内容，方便整理纪要或发送给商业伙伴',
+    export_total_msgs: '房间内共有 {count} 条对话记录',
+    export_empty: '房间内暂无对话记录。',
+    export_txt_btn: '下载文本文件 (.TXT)',
+    export_txt_desc: '轻量，所有手机即开即看，方便转发至微信/备忘录',
+    export_copy_btn: '复制全部对话内容',
+    export_copied: '已复制到剪贴板！',
+    export_html_btn: '导出会议纪要 / 打印 (.HTML)',
+    export_html_desc: '专业双语对照排版，可直接打印或另存为 PDF 文件',
+    export_close: '关闭',
+
     // Noise Calibration Modal
     calib_title: '环境噪声校准',
     calib_desc: '测量展厅或现场背景噪声，防止周围噪音误触发录音。',
@@ -265,6 +293,7 @@ export const translations = {
     auto_speak_off: 'Auto-Voice: OFF',
     auto_speak_tooltip: 'Automatically read incoming translations in your language',
     btn_qr: 'QR Invite',
+    btn_export: 'Save Chat',
     btn_calibrate: 'Noise Calib',
     btn_leave: 'Leave',
 
@@ -323,6 +352,19 @@ export const translations = {
     qr_copy_link: 'Copy Link',
     qr_copied: 'Link Copied!',
     qr_close: 'Close',
+
+    // Export Modal
+    export_title: 'Export Conversation',
+    export_subtitle: 'Save complete transcript for meeting minutes or sharing with partners',
+    export_total_msgs: 'Total: {count} messages in room',
+    export_empty: 'No messages to export yet.',
+    export_txt_btn: 'Download Text File (.TXT)',
+    export_txt_desc: 'Lightweight, opens on any phone, easy to share via chat',
+    export_copy_btn: 'Copy All to Clipboard',
+    export_copied: 'Copied to clipboard!',
+    export_html_btn: 'Export Meeting Report (.HTML)',
+    export_html_desc: 'Professional bilingual format, ready to print or save as PDF',
+    export_close: 'Close',
 
     // Noise Calibration Modal
     calib_title: 'Background Noise Calibration',
