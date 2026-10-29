@@ -57,9 +57,9 @@ export default async function handler(req: any, res: any) {
   }
 
   try {
-    const { audioBase64, mimeType, speakerLang } = req.body || {};
+    const { audioBase64, mimeType, speakerLang, textOnly } = req.body || {};
 
-    if (!audioBase64) {
+    if (!audioBase64 && !textOnly) {
       return sendResponse(400, { error: 'Missing audioBase64 payload.' });
     }
 
@@ -97,17 +97,23 @@ Nhiệm vụ:
           contents: [
             {
               role: 'user',
-              parts: [
-                {
-                  inlineData: {
-                    mimeType: cleanMimeType,
-                    data: audioBase64,
-                  },
-                },
-                {
-                  text: 'Hãy nhận diện giọng nói trong đoạn ghi âm và dịch sang 3 ngôn ngữ theo đúng định dạng JSON.',
-                },
-              ],
+              parts: textOnly
+                ? [
+                    {
+                      text: `Dịch câu sau sang 3 ngôn ngữ theo định dạng JSON: "${textOnly}"`,
+                    },
+                  ]
+                : [
+                    {
+                      inlineData: {
+                        mimeType: cleanMimeType,
+                        data: audioBase64,
+                      },
+                    },
+                    {
+                      text: 'Hãy nhận diện giọng nói trong đoạn ghi âm và dịch sang 3 ngôn ngữ theo đúng định dạng JSON.',
+                    },
+                  ],
             },
           ],
           config: {
