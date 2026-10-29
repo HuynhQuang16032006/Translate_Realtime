@@ -104,10 +104,11 @@ export class SpeechRecognitionService {
         // Ignore
       }
 
-      // Small delay to allow any pending native audio buffers to finalize
+      // Fast-resolve if transcript already has content, otherwise allow brief window for final audio buffer
+      const waitTime = this.currentTranscript.trim() ? 40 : 180;
       setTimeout(() => {
         resolve(this.currentTranscript.trim());
-      }, 350);
+      }, waitTime);
     });
   }
 

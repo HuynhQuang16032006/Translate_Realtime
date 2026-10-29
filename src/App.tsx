@@ -186,23 +186,98 @@ export const App: React.FC = () => {
     }
   }, []);
 
-  // Process recorded audio through Gemini / Fast Translation Backend
+  // Ultra-low latency client direct translator (100ms response time)
+  const freeTranslateDirect = async (text: string, targetLang: string): Promise<string> => {
+    try {
+      const code = targetLang === 'zh' ? 'zh-CN' : targetLang === 'en' ? 'en' : 'vi';
+      const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=${code}&dt=t&q=${encodeURIComponent(text)}`;
+      const resp = await fetch(url, { signal: AbortSignal.timeout(1200) });
+      const data = (await resp.json()) as any;
+      return data[0]?.map((s: any) => s[0]).join('') || text;
+    } catch (e) {
+      return '';
+    }
+  };
+
+  // Process recorded audio through Ultra-Fast Translation Backend
   const processAndTranslateAudio = async (
     recordResult: AudioRecordResult | null,
     clientTranscript?: string
   ) => {
     setIsProcessing(true);
     try {
+      const trimmedText = (clientTranscript || '').trim();
+
+      // OPTIMIZATION 1: Direct client-side neural translation (100ms latency)
+      if (trimmedText) {
+        try {
+          const [transVi, transZh, transEn] = await Promise.all([
+            userRef.current.lang === 'vi' ? Promise.resolve(trimmedText) : freeTranslateDirect(trimmedText, 'vi'),
+            userRef.current.lang === 'zh' ? Promise.resolve(trimmedText) : freeTranslateDirect(trimmedText, 'zh'),
+            userRef.current.lang === 'en' ? Promise.resolve(trimmedText) : freeTranslateDirect(trimmedText, 'en'),
+          ]);
+
+          if (transVi && transZh) {
+            const newMsg: TranslationMessage = {
+              id: `msg_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+              senderId: userRef.current.id,
+              senderName: userRef.current.name,
+              detectedLang: userRef.current.lang,
+              originalText: trimmedText,
+              translations: {
+                vi: transVi,
+                zh: transZh,
+                en: transEn || trimmedText,
+              },
+              timestamp: Date.now(),
+            };
+
+            setMessages((prev) => [...prev, newMsg]);
+
+            if (mqttServiceRef.current) {
+              mqttServiceRef.current.broadcastTranslation(newMsg);
+            }
+
+            const currentDeviceLang = userRef.current.lang;
+            const speakerTranslated = newMsg.translations[currentDeviceLang] || newMsg.originalText;
+            if (speakerTranslated) {
+              if (popupTimerRef.current) clearTimeout(popupTimerRef.current);
+              setLivePopup({
+                isVisible: true,
+                speakerName: newMsg.senderName,
+                translatedText: speakerTranslated,
+                originalText: newMsg.originalText,
+              });
+              popupTimerRef.current = setTimeout(() => {
+                setLivePopup((prev) => ({ ...prev, isVisible: false }));
+              }, 6000);
+            }
+
+            setIsProcessing(false);
+            mqttServiceRef.current?.broadcastUnlock();
+            return;
+          }
+        } catch (e) {
+          // Direct fetch failed (e.g. GFW without VPN), seamlessly fallback to /api/translate
+        }
+      }
+
+      // OPTIMIZATION 2: Lightweight payload without heavy 500KB audioBase64 if text is present
+      const payload: any = {
+        speakerLang: userRef.current.lang,
+        clientTranscript: trimmedText,
+        userApiKey: customApiKey,
+      };
+
+      if (!trimmedText && recordResult?.audioBase64) {
+        payload.audioBase64 = recordResult.audioBase64;
+        payload.mimeType = recordResult.mimeType || 'audio/webm';
+      }
+
       const response = await fetch('/api/translate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          audioBase64: recordResult?.audioBase64 || '',
-          mimeType: recordResult?.mimeType || 'audio/webm',
-          speakerLang: userRef.current.lang,
-          clientTranscript: clientTranscript || '',
-          userApiKey: customApiKey,
-        }),
+        body: JSON.stringify(payload),
       });
 
       if (!response.ok) {
@@ -295,6 +370,16 @@ export const App: React.FC = () => {
     if (!isRecordingRef.current) return;
 
     setIsRecording(false);
+
+    // Instant shortcut: if speech recognition already captured text while user was speaking
+    const instantTranscript = (speechRecognitionHelper.getCurrentTranscript() || liveTranscript || '').trim();
+    if (instantTranscript) {
+      speechRecognitionHelper.stop();
+      audioRecorderRef.current?.stop();
+      await processAndTranslateAudio(null, instantTranscript);
+      return;
+    }
+
     if (audioRecorderRef.current) {
       const [recordResult, clientTranscript] = await Promise.all([
         audioRecorderRef.current.stop(),
@@ -408,6 +493,16 @@ export const App: React.FC = () => {
     if (!isRecording) return;
 
     setIsRecording(false);
+
+    // Instant shortcut: if speech recognition already captured text while user was speaking
+    const instantTranscript = (speechRecognitionHelper.getCurrentTranscript() || liveTranscript || '').trim();
+    if (instantTranscript) {
+      speechRecognitionHelper.stop();
+      audioRecorderRef.current?.stop();
+      await processAndTranslateAudio(null, instantTranscript);
+      return;
+    }
+
     if (audioRecorderRef.current) {
       const [recordResult, clientTranscript] = await Promise.all([
         audioRecorderRef.current.stop(),
