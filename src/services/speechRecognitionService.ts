@@ -233,22 +233,52 @@ export class SpeechRecognitionService {
 
   public stop(): Promise<string> {
     this.isListening = false;
+    const existingText = (this.currentTranscript || this.accumulatedTranscript).trim();
 
-    return new Promise((resolve) => {
-      const existingText = (this.currentTranscript || this.accumulatedTranscript).trim();
+    if (!this.recognition) {
+      return Promise.resolve(existingText);
+    }
 
-      if (!this.recognition) {
-        return resolve(existingText);
+    const isIOS =
+      typeof navigator !== 'undefined' &&
+      (/iPad|iPhone|iPod/.test(navigator.userAgent) ||
+        (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1));
+
+    const rec = this.recognition;
+    this.recognition = null;
+
+    if (isIOS) {
+      // On iOS WebKit (Chrome & Safari on iPhone):
+      // Calling abort() immediately forces WebKit to release the AVAudioSession hardware lock.
+      // Calling stop() without abort on iOS is known to hang, leaving the mic locked for subsequent recordings!
+      try {
+        rec.onresult = null;
+        rec.onerror = null;
+        rec.onend = null;
+        rec.abort();
+      } catch (e) {
+        try {
+          rec.stop();
+        } catch (e2) {}
       }
+      return Promise.resolve(existingText);
+    }
 
-      const rec = this.recognition;
+    // On Desktop (Laptop/PC) and Android:
+    // Gracefully wait up to 400ms for browser engine to deliver the final spoken chunk
+    return new Promise((resolve) => {
       let resolved = false;
 
       const finish = () => {
         if (resolved) return;
         resolved = true;
         const finalText = (this.currentTranscript || this.accumulatedTranscript).trim();
-        this.destroyCurrentSession();
+        try {
+          rec.onresult = null;
+          rec.onerror = null;
+          rec.onend = null;
+          rec.abort();
+        } catch (e) {}
         resolve(finalText);
       };
 

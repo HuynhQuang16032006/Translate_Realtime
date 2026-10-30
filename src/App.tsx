@@ -353,18 +353,9 @@ export const App: React.FC = () => {
       (/iPad|iPhone|iPod/.test(navigator.userAgent) ||
         (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1));
 
-    // Detect mobile vs desktop platforms
-    const isMobile =
-      typeof navigator !== 'undefined' &&
-      /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-
-    // On iOS Safari, release any background getUserMedia streams so WebKit SpeechRecognition has exclusive mic access
-    if (isIOS && mediaStreamRef.current) {
-      try {
-        mediaStreamRef.current.getTracks().forEach((t) => t.stop());
-      } catch (e) {}
-      mediaStreamRef.current = null;
-    }
+    // Detect Android specifically (which has Knox / AudioRecord HAL single-mic hardware contention)
+    const isAndroid =
+      typeof navigator !== 'undefined' && /Android/i.test(navigator.userAgent);
 
     // 2. Start Web Speech Recognition synchronously within user gesture for live text on screen
     let startedSpeechRecognition = false;
@@ -388,11 +379,11 @@ export const App: React.FC = () => {
     liveTranscriptRef.current = '';
 
     // 3. Audio Recording Handling
-    // On Laptop / Desktop PC: ALWAYS record audio concurrently as a 100% fail-safe fallback!
-    // Desktop OS (Windows, macOS, Linux) have multi-channel audio mixing and zero hardware contention.
-    // On Mobile (iOS / Android): Only record audio if SpeechRecognition is NOT active,
-    // to prevent mobile single-pipeline hardware locks that starve the speech recognition engine.
-    const shouldRecordAudio = !isMobile || !startedSpeechRecognition;
+    // On Laptop / Desktop PC and iPhone / iPad (iOS): ALWAYS record audio concurrently as a guaranteed safety net!
+    // This ensures subsequent recordings (2nd, 3rd, etc.) NEVER fail even if WebKit speech engine stutters.
+    // On Android (Samsung): Only record audio if SpeechRecognition is NOT active,
+    // to prevent Android AudioRecord HAL hardware contention that breaks speech recognition.
+    const shouldRecordAudio = !isAndroid || !startedSpeechRecognition;
 
     if (shouldRecordAudio) {
       if (!audioRecorderRef.current) {
@@ -477,17 +468,7 @@ export const App: React.FC = () => {
         : Promise.resolve(''),
     ]);
 
-    // On iOS Safari, physically release media tracks so WebKit speech recognition can access mic on subsequent turns
-    const isIOSDevice =
-      typeof navigator !== 'undefined' &&
-      (/iPad|iPhone|iPod/.test(navigator.userAgent) ||
-        (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1));
-    if (isIOSDevice && mediaStreamRef.current) {
-      try {
-        mediaStreamRef.current.getTracks().forEach((t) => t.stop());
-      } catch (e) {}
-      mediaStreamRef.current = null;
-    }
+    // Note: Keep mediaStreamRef.current alive while in room so subsequent recordings start instantly without hardware re-acquisition latency
 
     const recognizedText = (
       clientTranscript ||
