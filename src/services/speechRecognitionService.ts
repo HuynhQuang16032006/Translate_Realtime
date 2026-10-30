@@ -1,5 +1,67 @@
 import type { Language } from '../types';
 
+/**
+ * Smart transcript merger that resolves:
+ * 1. Android Chrome cumulative chunks (replacing previous partial snapshots)
+ * 2. Desktop & iOS incremental non-overlapping chunks
+ * 3. Repetitive word boundaries across onend restarts
+ */
+function mergeTranscriptList(chunks: string[]): string {
+  const merged: string[] = [];
+
+  for (const rawChunk of chunks) {
+    const chunk = rawChunk.trim();
+    if (!chunk) continue;
+
+    if (merged.length === 0) {
+      merged.push(chunk);
+      continue;
+    }
+
+    const lastIdx = merged.length - 1;
+    const last = merged[lastIdx];
+
+    // Case 1: Exact duplicate
+    if (chunk === last) {
+      continue;
+    }
+
+    // Case 2: New chunk is an extension of the last chunk (Android cumulative snapshot bug)
+    // e.g. last = "Tôi", chunk = "Tôi muốn một"
+    if (chunk.toLowerCase().startsWith(last.toLowerCase())) {
+      merged[lastIdx] = chunk;
+      continue;
+    }
+
+    // Case 3: Last chunk is an extension of the new chunk (interim rollback)
+    if (last.toLowerCase().startsWith(chunk.toLowerCase())) {
+      continue;
+    }
+
+    // Case 4: Overlapping boundary between last and chunk (word overlap)
+    const lastWords = last.split(/\s+/);
+    const chunkWords = chunk.split(/\s+/);
+
+    let overlapFound = false;
+    const maxOverlap = Math.min(lastWords.length, chunkWords.length, 5);
+    for (let len = maxOverlap; len >= 1; len--) {
+      const lastTail = lastWords.slice(-len).join(' ').toLowerCase();
+      const chunkHead = chunkWords.slice(0, len).join(' ').toLowerCase();
+      if (lastTail === chunkHead) {
+        merged[lastIdx] = last + ' ' + chunkWords.slice(len).join(' ');
+        overlapFound = true;
+        break;
+      }
+    }
+
+    if (!overlapFound) {
+      merged.push(chunk);
+    }
+  }
+
+  return merged.join(' ').trim();
+}
+
 export class SpeechRecognitionService {
   private recognition: any = null;
   private currentTranscript: string = '';
@@ -79,24 +141,22 @@ export class SpeechRecognitionService {
       recognition.lang = langMap[this.currentLang] || 'vi-VN';
 
       recognition.onresult = (event: any) => {
-        let finalStr = '';
-        let interimStr = '';
+        const rawChunks: string[] = [];
 
         for (let i = 0; i < event.results.length; ++i) {
           const item = event.results[i];
           if (!item || !item[0]) continue;
           const transcript = (item[0].transcript || '').trim();
-          if (!transcript) continue;
-
-          if (item.isFinal) {
-            finalStr += (finalStr ? ' ' : '') + transcript;
-          } else {
-            interimStr += (interimStr ? ' ' : '') + transcript;
+          if (transcript) {
+            rawChunks.push(transcript);
           }
         }
 
-        const segmentText = (finalStr + (interimStr ? ' ' + interimStr : '')).trim();
-        const full = (this.accumulatedTranscript ? this.accumulatedTranscript + ' ' + segmentText : segmentText).trim();
+        const segmentText = mergeTranscriptList(rawChunks);
+        const full = this.accumulatedTranscript
+          ? mergeTranscriptList([this.accumulatedTranscript, segmentText])
+          : segmentText;
+
         if (full) {
           this.currentTranscript = full;
           if (this.onUpdateCallback) {
