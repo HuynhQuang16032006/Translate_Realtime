@@ -304,13 +304,9 @@ export const App: React.FC = () => {
 
   // Cancel current recording (if AI misheard before sending)
   const handleCancelRecord = () => {
-    speechRecognitionHelper.stop();
+    speechRecognitionHelper.stop().catch(() => '');
     if (audioRecorderRef.current?.isRecording()) {
-      audioRecorderRef.current.stop();
-    }
-    if (mediaStreamRef.current) {
-      mediaStreamRef.current.getTracks().forEach((t) => t.stop());
-      mediaStreamRef.current = null;
+      audioRecorderRef.current.stop().catch(() => null);
     }
     setIsRecording(false);
     setLiveTranscript('');
@@ -333,18 +329,16 @@ export const App: React.FC = () => {
     setLiveTranscript('');
     setIsRecording(true);
 
-    const speechSupported = speechRecognitionHelper.isSupported();
+    // 1. Ensure AudioRecorder is initialized
+    if (!audioRecorderRef.current) {
+      audioRecorderRef.current = new CrossBrowserAudioRecorder();
+    }
 
-    // 1. If SpeechRecognition is supported: Give it EXCLUSIVE microphone access (no MediaRecorder interference!)
-    if (speechSupported) {
-      speechRecognitionHelper.start(userRef.current.lang);
-    } else {
-      // 2. Fallback: If browser has no SpeechRecognition (e.g. WeChat in-app), use MediaRecorder
-      if (!audioRecorderRef.current) {
-        audioRecorderRef.current = new CrossBrowserAudioRecorder();
-      }
+    // 2. Ensure active media stream for MediaRecorder (Guarantees we never lose the audio recording!)
+    let stream = mediaStreamRef.current;
+    if (!stream || !stream.active || stream.getAudioTracks().every((t) => t.readyState === 'ended')) {
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({
+        stream = await navigator.mediaDevices.getUserMedia({
           audio: {
             echoCancellation: true,
             noiseSuppression: true,
@@ -352,12 +346,28 @@ export const App: React.FC = () => {
           },
         });
         mediaStreamRef.current = stream;
-        audioRecorderRef.current.start(stream);
       } catch (e) {
         console.warn('Lỗi mở Micro:', e);
-        showErrorToast('Vui lòng cấp quyền Micro trong trình duyệt.');
+        showErrorToast('Vui lòng cấp quyền Micro trong trình duyệt để đàm thoại.');
         setIsRecording(false);
         mqttServiceRef.current?.broadcastUnlock();
+        return;
+      }
+    }
+
+    // 3. Start MediaRecorder (Guaranteed audio capture on all mobile browsers)
+    try {
+      audioRecorderRef.current.start(stream);
+    } catch (e) {
+      console.warn('Audio recorder start failed:', e);
+    }
+
+    // 4. Also start SpeechRecognition in parallel if supported (for live text preview on screen)
+    if (speechRecognitionHelper.isSupported()) {
+      try {
+        speechRecognitionHelper.start(userRef.current.lang);
+      } catch (e) {
+        console.warn('SpeechRecognition start failed:', e);
       }
     }
   };
@@ -375,42 +385,29 @@ export const App: React.FC = () => {
 
     setIsRecording(false);
 
-    // 1. If SpeechRecognition was running
-    if (speechRecognitionHelper.isSupported()) {
-      const transcript = await speechRecognitionHelper.stop();
-      const textToUse = (transcript || speechRecognitionHelper.getCurrentTranscript() || liveTranscript || '').trim();
+    // Stop both in parallel
+    const [recordResult, clientTranscript] = await Promise.all([
+      audioRecorderRef.current ? audioRecorderRef.current.stop().catch(() => null) : Promise.resolve(null),
+      speechRecognitionHelper.isSupported() ? speechRecognitionHelper.stop().catch(() => '') : Promise.resolve(''),
+    ]);
 
-      if (textToUse) {
-        if (instantSend) {
-          // Instant send mode: translate and broadcast immediately (150ms)
-          setReviewText('');
-          await processAndTranslateAudio(null, textToUse);
-        } else {
-          // Review & Confirm mode: keep text in review box so user can confirm and edit!
-          setReviewText(textToUse);
-          mqttServiceRef.current?.broadcastUnlock();
-        }
+    const recognizedText = (clientTranscript || speechRecognitionHelper.getCurrentTranscript() || liveTranscript || '').trim();
+
+    if (recognizedText) {
+      // Speech recognition captured real-time text!
+      if (instantSend) {
+        setReviewText('');
+        await processAndTranslateAudio(null, recognizedText);
       } else {
-        showErrorToast('Chưa nghe rõ câu nói. Hãy bấm nói to hơn hoặc gõ trực tiếp vào ô nhắn tin.');
+        setReviewText(recognizedText);
         mqttServiceRef.current?.broadcastUnlock();
       }
-      return;
-    }
-
-    // 2. Fallback: MediaRecorder audio processing
-    if (audioRecorderRef.current && audioRecorderRef.current.isRecording()) {
-      const recordResult = await audioRecorderRef.current.stop();
-      if (mediaStreamRef.current) {
-        mediaStreamRef.current.getTracks().forEach((track) => track.stop());
-        mediaStreamRef.current = null;
-      }
-
-      if (recordResult) {
-        await processAndTranslateAudio(recordResult, '');
-      } else {
-        showErrorToast('Chưa ghi nhận được âm thanh. Hãy bấm và nói to, rõ ràng hơn.');
-        mqttServiceRef.current?.broadcastUnlock();
-      }
+    } else if (recordResult && recordResult.audioBase64) {
+      // Audio was recorded; send to Gemini 3.5 Flash for transcription and translation!
+      await processAndTranslateAudio(recordResult, '');
+    } else {
+      showErrorToast('Chưa nghe rõ câu nói. Hãy bấm và nói to hơn hoặc gõ trực tiếp vào ô nhắn tin.');
+      mqttServiceRef.current?.broadcastUnlock();
     }
   };
 
