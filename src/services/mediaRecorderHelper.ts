@@ -117,6 +117,14 @@ export class CrossBrowserAudioRecorder {
         }
       };
 
+      try {
+        if (this.mediaRecorder.state === 'recording') {
+          this.mediaRecorder.requestData();
+        }
+      } catch (e) {
+        // Ignore if requestData not supported
+      }
+
       this.mediaRecorder.stop();
     });
   }

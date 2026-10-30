@@ -83,6 +83,27 @@ export default async function handler(req: any, res: any) {
       }
     }
 
+    const urlObj = (() => {
+      try {
+        return new URL(req.url, 'http://localhost');
+      } catch (e) {
+        return null;
+      }
+    })();
+
+    if (urlObj?.searchParams.get('checkModels') === '1' && apiKey) {
+      try {
+        const resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`);
+        const data = (await resp.json()) as any;
+        const modelNames = data?.models?.map((m: any) => m.name.replace('models/', '')) || [];
+        return sendResponse(200, {
+          availableModels: modelNames.filter((n: string) => n.includes('flash') || n.includes('gemini')),
+        });
+      } catch (e: any) {
+        return sendResponse(500, { error: e.message });
+      }
+    }
+
     return sendResponse(200, {
       status: 'active',
       hasApiKey: !!apiKey,
@@ -156,83 +177,98 @@ Nhiệm vụ:
 }`;
 
     const candidateModels = [
-      'gemini-2.0-flash',
-      'gemini-1.5-flash',
-      'gemini-1.5-flash-8b',
+      'gemini-3.8-flash',
+      'gemini-3-flash',
+      'gemini-2.5-flash',
+      'gemini-2.5-flash-lite',
     ];
 
-    const payload = {
-      system_instruction: {
-        parts: [{ text: systemInstruction }],
-      },
-      contents: [
-        {
-          role: 'user',
-          parts: [
-            {
-              inline_data: {
-                mime_type: cleanMimeType,
-                data: audioBase64,
-              },
-            },
-            {
-              text: 'Hãy nhận diện giọng nói trong đoạn ghi âm và dịch sang 3 ngôn ngữ theo đúng định dạng JSON.',
-            },
-          ],
-        },
-      ],
-      generation_config: {
-        response_mime_type: 'application/json',
-        temperature: 0.1,
-      },
-    };
+    const mimeCandidates = cleanMimeType === 'audio/mp4'
+      ? ['audio/mp4', 'audio/m4a', 'audio/aac']
+      : [cleanMimeType];
 
     let responseJsonText = '';
     let isQuotaExceeded = false;
     const modelErrors: Record<string, any> = {};
 
     for (const modelName of candidateModels) {
-      try {
-        const geminiResp = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`,
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload),
-            signal: AbortSignal.timeout(6000), // 6s fast timeout for real-time response
-          }
-        );
+      for (const currentMime of mimeCandidates) {
+        try {
+          const payload = {
+            system_instruction: {
+              parts: [{ text: systemInstruction }],
+            },
+            contents: [
+              {
+                role: 'user',
+                parts: [
+                  {
+                    inline_data: {
+                      mime_type: currentMime,
+                      data: audioBase64,
+                    },
+                  },
+                  {
+                    text: 'Hãy nhận diện giọng nói trong đoạn ghi âm và dịch sang 3 ngôn ngữ theo đúng định dạng JSON.',
+                  },
+                ],
+              },
+            ],
+            generation_config: {
+              response_mime_type: 'application/json',
+              temperature: 0.1,
+            },
+          };
 
-        const data = (await geminiResp.json()) as any;
-        if (!geminiResp.ok) {
-          const errMsg = data?.error?.message || data?.error || `HTTP ${geminiResp.status}`;
-          modelErrors[modelName] = errMsg;
-          if (geminiResp.status === 429 || errMsg.includes('Quota exceeded') || errMsg.includes('free_tier_requests')) {
-            isQuotaExceeded = true;
-          }
-          continue;
-        }
+          const geminiResp = await fetch(
+            `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`,
+            {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(payload),
+              signal: AbortSignal.timeout(12000), // 12s timeout for mobile audio processing
+            }
+          );
 
-        const candidateText = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-        if (candidateText) {
-          responseJsonText = candidateText;
-          break;
+          const data = (await geminiResp.json()) as any;
+          if (!geminiResp.ok) {
+            const errMsg = data?.error?.message || data?.error || `HTTP ${geminiResp.status}`;
+            modelErrors[`${modelName}_${currentMime}`] = errMsg;
+            if (geminiResp.status === 429 || errMsg.includes('Quota exceeded') || errMsg.includes('free_tier_requests')) {
+              isQuotaExceeded = true;
+            }
+            // If it's a MIME type error, try next MIME candidate; otherwise try next model
+            if (errMsg.toLowerCase().includes('mime')) {
+              continue;
+            }
+            break;
+          }
+
+          const candidateText = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+          if (candidateText) {
+            responseJsonText = candidateText;
+            break;
+          }
+        } catch (err: any) {
+          modelErrors[`${modelName}_${currentMime}`] = err?.message || String(err);
         }
-      } catch (err: any) {
-        modelErrors[modelName] = err?.message || String(err);
+      }
+      if (responseJsonText) {
+        break;
       }
     }
 
     if (!responseJsonText) {
       if (isQuotaExceeded) {
         return sendResponse(429, {
-          error: 'Khóa Gemini API miễn phí đã hết hạn mức 20 câu/ngày của Google. Hãy dùng khung gõ chữ bên dưới (không giới hạn lượt) hoặc bấm Cài đặt để thêm API Key mới.',
+          error: 'Khóa Gemini API miễn phí đã hết hạn mức của Google. Hãy dùng khung gõ chữ bên dưới (không giới hạn lượt) hoặc bấm Cài đặt để thêm API Key mới.',
           modelErrors,
         });
       }
 
       return sendResponse(500, {
         error: 'AI chưa nhận diện được âm thanh. Hãy nói to hơn hoặc gõ trực tiếp vào ô nhắn tin bên dưới.',
+        details: Object.values(modelErrors).join(' | '),
         modelErrors,
       });
     }
@@ -241,7 +277,17 @@ Nhiệm vụ:
     if (cleaned.startsWith('```json')) cleaned = cleaned.replace(/^```json\s*/, '').replace(/\s*```$/, '');
     else if (cleaned.startsWith('```')) cleaned = cleaned.replace(/^```\s*/, '').replace(/\s*```$/, '');
 
-    const parsed = JSON.parse(cleaned);
+    let parsed: any;
+    try {
+      parsed = JSON.parse(cleaned);
+    } catch (e) {
+      const match = cleaned.match(/\{[\s\S]*\}/);
+      if (match) {
+        parsed = JSON.parse(match[0]);
+      } else {
+        throw new Error('AI phản hồi định dạng không hợp lệ');
+      }
+    }
     return sendResponse(200, parsed);
   } catch (error: any) {
     console.error('Lỗi phiên dịch Gemini API:', error);

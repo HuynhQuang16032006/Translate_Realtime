@@ -387,7 +387,7 @@ export const App: React.FC = () => {
   };
 
   // Manual Push-to-Talk (PTT) Start
-  const handleStartManualRecord = () => {
+  const handleStartManualRecord = async () => {
     if (isRecording || isProcessing) return;
     if (lockState.isLocked && lockState.lockedBy !== user.id) return;
 
@@ -399,6 +399,30 @@ export const App: React.FC = () => {
 
     setLiveTranscript('');
     setIsRecording(true);
+
+    // Ensure audio recorder instance is initialized
+    if (!audioRecorderRef.current) {
+      audioRecorderRef.current = new CrossBrowserAudioRecorder();
+    }
+
+    // Ensure active media stream (re-request if muted or asleep on mobile browser)
+    if (
+      !mediaStreamRef.current ||
+      !mediaStreamRef.current.active ||
+      mediaStreamRef.current.getAudioTracks().every((t) => t.readyState === 'ended')
+    ) {
+      try {
+        mediaStreamRef.current = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+          },
+        });
+      } catch (e) {
+        console.warn('Không thể tái kích hoạt microphone stream:', e);
+      }
+    }
 
     // 1. Start live speech recognition for real-time text
     speechRecognitionHelper.start(userRef.current.lang);
@@ -447,6 +471,7 @@ export const App: React.FC = () => {
       } else if (recordResult) {
         await processAndTranslateAudio(recordResult, '');
       } else {
+        showErrorToast('Chưa ghi nhận được âm thanh. Hãy bấm và nói to, rõ ràng hơn.');
         mqttServiceRef.current?.broadcastUnlock();
       }
     }

@@ -55,23 +55,16 @@ export class SpeechRecognitionService {
       recognition.lang = langMap[lang] || 'vi-VN';
 
       recognition.onresult = (event: any) => {
-        let finalStr = '';
         let interimStr = '';
-
-        const startIndex = isMobile ? 0 : (event.resultIndex || 0);
-        for (let i = startIndex; i < event.results.length; ++i) {
+        for (let i = event.resultIndex || 0; i < event.results.length; ++i) {
           const item = event.results[i];
           if (!item || !item[0]) continue;
           const transcript = item[0].transcript || '';
           if (item.isFinal) {
-            finalStr += transcript + ' ';
+            this.accumulatedTranscript = (this.accumulatedTranscript + ' ' + transcript).trim();
           } else {
             interimStr += transcript;
           }
-        }
-
-        if (finalStr.trim()) {
-          this.accumulatedTranscript = (this.accumulatedTranscript + ' ' + finalStr).trim();
         }
 
         const full = (this.accumulatedTranscript + ' ' + interimStr).trim();
@@ -89,14 +82,15 @@ export class SpeechRecognitionService {
         if (error === 'no-speech') {
           return;
         }
-        if (this.isListening && error !== 'not-allowed') {
+        const nonRetryErrors = ['not-allowed', 'audio-capture', 'service-not-allowed'];
+        if (this.isListening && !nonRetryErrors.includes(error)) {
           setTimeout(() => {
             if (this.isListening) {
               try {
                 recognition.start();
               } catch (e) {}
             }
-          }, 100);
+          }, 200);
         }
       };
 
