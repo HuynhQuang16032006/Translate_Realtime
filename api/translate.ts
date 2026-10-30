@@ -244,11 +244,8 @@ Nhiệm vụ:
             if (geminiResp.status === 429 || errMsg.includes('Quota exceeded') || errMsg.includes('free_tier_requests')) {
               isQuotaExceeded = true;
             }
-            // If it's a MIME type error, try next MIME candidate; otherwise try next model
-            if (errMsg.toLowerCase().includes('mime')) {
-              continue;
-            }
-            break;
+            // Try next MIME candidate (e.g. audio/mp4, audio/m4a, audio/aac)
+            continue;
           }
 
           const candidateText = data?.candidates?.[0]?.content?.parts?.[0]?.text;
