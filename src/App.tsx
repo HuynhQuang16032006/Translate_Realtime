@@ -327,12 +327,7 @@ export const App: React.FC = () => {
     if (speechRecognitionHelper.isSupported()) {
       speechRecognitionHelper.reset();
     }
-    if (mediaStreamRef.current) {
-      try {
-        mediaStreamRef.current.getTracks().forEach((t) => t.stop());
-      } catch (e) {}
-      mediaStreamRef.current = null;
-    }
+    // Keep mediaStreamRef.current alive for seamless subsequent recording
     setIsRecording(false);
     setLiveTranscript('');
     liveTranscriptRef.current = '';
@@ -458,13 +453,7 @@ export const App: React.FC = () => {
         : Promise.resolve(''),
     ]);
 
-    // Release microphone hardware immediately so Safari never mutes tracks while idle
-    if (mediaStreamRef.current) {
-      try {
-        mediaStreamRef.current.getTracks().forEach((t) => t.stop());
-      } catch (e) {}
-      mediaStreamRef.current = null;
-    }
+    // Note: Keep mediaStreamRef.current alive while in room so subsequent recordings start instantly without hardware re-acquisition latency
 
     const recognizedText = (
       clientTranscript ||

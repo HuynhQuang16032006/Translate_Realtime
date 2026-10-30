@@ -155,8 +155,13 @@ export class SpeechRecognitionService {
       return true;
     } catch (err) {
       console.warn('Lỗi khởi động SpeechRecognition:', err);
-      if (this.onErrorCallback) {
-        this.onErrorCallback(String(err));
+      // Auto-retry once after 150ms if browser was still releasing previous session
+      if (this.isListening) {
+        setTimeout(() => {
+          if (this.isListening && !this.recognition) {
+            this.initAndStart();
+          }
+        }, 150);
       }
       return false;
     }
@@ -164,15 +169,23 @@ export class SpeechRecognitionService {
 
   public stop(): Promise<string> {
     this.isListening = false;
+    const text = (this.currentTranscript || this.accumulatedTranscript).trim();
+
     if (this.recognition) {
+      const rec = this.recognition;
+      this.recognition = null;
       try {
-        this.recognition.stop();
+        rec.onresult = null;
+        rec.onerror = null;
+        rec.onend = null;
+        rec.stop();
       } catch (e) {
-        // Ignore
+        try {
+          rec.abort();
+        } catch (e2) {}
       }
     }
 
-    const text = (this.currentTranscript || this.accumulatedTranscript).trim();
     return Promise.resolve(text);
   }
 

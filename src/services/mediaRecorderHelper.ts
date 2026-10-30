@@ -47,6 +47,17 @@ export class CrossBrowserAudioRecorder {
   }
 
   public start(stream: MediaStream): void {
+    if (this.mediaRecorder) {
+      try {
+        this.mediaRecorder.ondataavailable = null;
+        this.mediaRecorder.onstop = null;
+        if (this.mediaRecorder.state !== 'inactive') {
+          this.mediaRecorder.stop();
+        }
+      } catch (e) {}
+      this.mediaRecorder = null;
+    }
+
     this.recordedChunks = [];
     this.startTime = Date.now();
 
@@ -87,13 +98,10 @@ export class CrossBrowserAudioRecorder {
     }
 
     const durationMs = Date.now() - this.startTime;
+    const currentRecorder = this.mediaRecorder;
 
     return new Promise<AudioRecordResult | null>((resolve) => {
-      if (!this.mediaRecorder) {
-        return resolve(null);
-      }
-
-      this.mediaRecorder.onstop = async () => {
+      currentRecorder.onstop = async () => {
         // Asynchronous WebKit flush: give Safari up to 200ms to deliver final ondataavailable event
         if (this.recordedChunks.length === 0) {
           await new Promise((r) => setTimeout(r, 200));
@@ -101,22 +109,25 @@ export class CrossBrowserAudioRecorder {
 
         if (this.recordedChunks.length === 0) {
           console.warn('MediaRecorder stopped with 0 chunks collected.');
+          this.mediaRecorder = null;
           resolve(null);
           return;
         }
 
-        const mime = this.selectedMimeType || this.mediaRecorder?.mimeType || 'audio/webm';
+        const mime = this.selectedMimeType || currentRecorder?.mimeType || 'audio/webm';
         const audioBlob = new Blob(this.recordedChunks, { type: mime });
 
         // Discard only if practically empty (under 100ms or under 50 bytes)
         if (durationMs < 100 || audioBlob.size < 50) {
           console.warn('Audio blob discarded: too short or empty.', { durationMs, size: audioBlob.size });
+          this.mediaRecorder = null;
           resolve(null);
           return;
         }
 
         try {
           const base64 = await this.blobToBase64(audioBlob);
+          this.mediaRecorder = null;
           resolve({
             audioBase64: base64,
             mimeType: mime,
@@ -125,21 +136,23 @@ export class CrossBrowserAudioRecorder {
           });
         } catch (err) {
           console.error('Lỗi chuyển đổi Blob sang Base64:', err);
+          this.mediaRecorder = null;
           resolve(null);
         }
       };
 
       try {
-        if (this.mediaRecorder.state === 'recording') {
-          this.mediaRecorder.requestData();
+        if (currentRecorder.state === 'recording') {
+          currentRecorder.requestData();
         }
       } catch (e) {
         // Ignore if requestData not supported
       }
 
       try {
-        this.mediaRecorder.stop();
+        currentRecorder.stop();
       } catch (e) {
+        this.mediaRecorder = null;
         resolve(null);
       }
     });
