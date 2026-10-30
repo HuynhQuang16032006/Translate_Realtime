@@ -82,14 +82,20 @@ export const App: React.FC = () => {
   const liveTranscriptRef = useRef<string>('');
   const [reviewText, setReviewText] = useState<string>('');
 
+  const hasRecognizedOnceRef = useRef<boolean>(false);
+
   useEffect(() => {
     speechRecognitionHelper.setUpdateCallback((text) => {
       liveTranscriptRef.current = text;
       setLiveTranscript(text);
+      if (text.trim()) {
+        hasRecognizedOnceRef.current = true;
+      }
     });
     speechRecognitionHelper.setErrorCallback((err) => {
       console.warn('SpeechRecognition error:', err);
-      if (err === 'service-not-allowed' || err === 'not-allowed' || err === 'language-not-supported') {
+      // Only show permission tip on the very first failure, never if user already used speech successfully
+      if (!hasRecognizedOnceRef.current && (err === 'service-not-allowed' || err === 'not-allowed' || err === 'language-not-supported')) {
         const isIOS =
           typeof navigator !== 'undefined' &&
           (/iPad|iPhone|iPod/.test(navigator.userAgent) ||
@@ -347,15 +353,14 @@ export const App: React.FC = () => {
     setSpeakingMessageId(null);
     isSpeakingTtsRef.current = false;
 
-    // Detect iOS devices (iPhone / iPad)
+    // Detect platform
     const isIOS =
       typeof navigator !== 'undefined' &&
       (/iPad|iPhone|iPod/.test(navigator.userAgent) ||
         (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1));
-
-    // Detect Android specifically (which has Knox / AudioRecord HAL single-mic hardware contention)
-    const isAndroid =
-      typeof navigator !== 'undefined' && /Android/i.test(navigator.userAgent);
+    const isMobile =
+      typeof navigator !== 'undefined' &&
+      /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
 
     // 2. Start Web Speech Recognition synchronously within user gesture for live text on screen
     let startedSpeechRecognition = false;
@@ -379,11 +384,11 @@ export const App: React.FC = () => {
     liveTranscriptRef.current = '';
 
     // 3. Audio Recording Handling
-    // On Laptop / Desktop PC and iPhone / iPad (iOS): ALWAYS record audio concurrently as a guaranteed safety net!
-    // This ensures subsequent recordings (2nd, 3rd, etc.) NEVER fail even if WebKit speech engine stutters.
-    // On Android (Samsung): Only record audio if SpeechRecognition is NOT active,
-    // to prevent Android AudioRecord HAL hardware contention that breaks speech recognition.
-    const shouldRecordAudio = !isAndroid || !startedSpeechRecognition;
+    // On Laptop / Desktop PC: ALWAYS record audio concurrently as a fail-safe fallback (Desktop OS mixes audio cleanly).
+    // On Mobile (iPhone / iPad / Android): ONLY record audio if SpeechRecognition is NOT active.
+    // Starting getUserMedia while SpeechRecognition is active on iOS / Android causes fatal audio hardware locks
+    // and throws NotAllowedError on the 2nd recording!
+    const shouldRecordAudio = !isMobile || !startedSpeechRecognition;
 
     if (shouldRecordAudio) {
       if (!audioRecorderRef.current) {
