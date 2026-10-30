@@ -377,57 +377,51 @@ export const App: React.FC = () => {
     liveTranscriptRef.current = '';
 
     // 3. Audio Recording Handling
-    // CRITICAL iOS WebKit Fix:
-    // On iOS Safari, getUserMedia and webkitSpeechRecognition CANNOT run simultaneously.
-    // Calling getUserMedia while webkitSpeechRecognition is active kills speech recognition on iOS!
-    // Therefore, if speechRecognitionActive on iOS, DO NOT touch getUserMedia!
-    // Only fall back to getUserMedia + MediaRecorder if speechRecognition is unsupported or failed.
-    if (!isIOS || !speechRecognitionActive) {
-      if (!audioRecorderRef.current) {
-        audioRecorderRef.current = new CrossBrowserAudioRecorder();
-      }
+    // GUARANTEED Recording on ALL devices (iOS Safari, iOS Chrome, Android, Desktop)
+    if (!audioRecorderRef.current) {
+      audioRecorderRef.current = new CrossBrowserAudioRecorder();
+    }
 
-      let stream = mediaStreamRef.current;
-      const isStreamValid =
-        stream &&
-        stream.active &&
-        stream.getAudioTracks().length > 0 &&
-        stream.getAudioTracks().every((t) => t.readyState === 'live' && !t.muted);
+    let stream = mediaStreamRef.current;
+    const isStreamValid =
+      stream &&
+      stream.active &&
+      stream.getAudioTracks().length > 0 &&
+      stream.getAudioTracks().every((t) => t.readyState === 'live' && !t.muted);
 
-      if (!isStreamValid) {
-        if (stream) {
-          try {
-            stream.getTracks().forEach((t) => t.stop());
-          } catch (e) {}
-        }
-        try {
-          const audioConstraints = isIOS
-            ? { echoCancellation: true }
-            : {
-                echoCancellation: true,
-                noiseSuppression: true,
-                autoGainControl: true,
-              };
-
-          stream = await navigator.mediaDevices.getUserMedia({ audio: audioConstraints });
-          mediaStreamRef.current = stream;
-        } catch (e) {
-          console.warn('Lỗi mở Micro:', e);
-          if (!speechRecognitionActive) {
-            showErrorToast('Vui lòng cấp quyền Micro trong trình duyệt để thu âm.');
-            speechRecognitionHelper.stop().catch(() => '');
-            mqttServiceRef.current?.broadcastUnlock();
-            return;
-          }
-        }
-      }
-
+    if (!isStreamValid) {
       if (stream) {
         try {
-          audioRecorderRef.current.start(stream);
-        } catch (e) {
-          console.warn('Audio recorder start failed:', e);
+          stream.getTracks().forEach((t) => t.stop());
+        } catch (e) {}
+      }
+      try {
+        const audioConstraints = isIOS
+          ? { echoCancellation: true }
+          : {
+              echoCancellation: true,
+              noiseSuppression: true,
+              autoGainControl: true,
+            };
+
+        stream = await navigator.mediaDevices.getUserMedia({ audio: audioConstraints });
+        mediaStreamRef.current = stream;
+      } catch (e) {
+        console.warn('Lỗi mở Micro:', e);
+        if (!speechRecognitionActive) {
+          showErrorToast('Vui lòng cấp quyền Micro trong trình duyệt để thu âm.');
+          speechRecognitionHelper.stop().catch(() => '');
+          mqttServiceRef.current?.broadcastUnlock();
+          return;
         }
+      }
+    }
+
+    if (stream) {
+      try {
+        audioRecorderRef.current.start(stream);
+      } catch (e) {
+        console.warn('Audio recorder start failed:', e);
       }
     }
 
