@@ -66,14 +66,8 @@ export class SpeechRecognitionService {
     try {
       const recognition = new SpeechRecognition();
 
-      const isIOS =
-        typeof navigator !== 'undefined' &&
-        (/iPad|iPhone|iPod/.test(navigator.userAgent) ||
-          (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1));
-
-      // On iOS Safari, continuous must be false or WebKit hangs and suppresses interimResults.
-      // On Android / Desktop Chrome, continuous can be true.
-      recognition.continuous = !isIOS;
+      // Always enable continuous and interimResults for smooth real-time text display
+      recognition.continuous = true;
       recognition.interimResults = true;
       recognition.maxAlternatives = 1;
 
@@ -143,13 +137,16 @@ export class SpeechRecognitionService {
           if (this.currentTranscript) {
             this.accumulatedTranscript = this.currentTranscript;
           }
-          if (isIOS) {
-            try {
-              recognition.start();
-            } catch (e) {
-              // Ignore if browser restricts start without gesture
+          // Restart recognition smoothly if user is still speaking
+          setTimeout(() => {
+            if (this.isListening && this.recognition) {
+              try {
+                this.recognition.start();
+              } catch (e) {
+                // If browser restricts start without gesture, keep existing accumulated text
+              }
             }
-          }
+          }, 150);
         }
       };
 
