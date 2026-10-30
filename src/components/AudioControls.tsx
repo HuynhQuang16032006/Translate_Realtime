@@ -47,6 +47,13 @@ export const AudioControls: React.FC<AudioControlsProps> = ({
     }
   }, [reviewText]);
 
+  // Live sync transcript into input text while recording so user sees text everywhere
+  useEffect(() => {
+    if (isRecording && liveTranscript) {
+      setInputText(liveTranscript);
+    }
+  }, [isRecording, liveTranscript]);
+
   // Duration timer while recording
   useEffect(() => {
     let interval: any = null;

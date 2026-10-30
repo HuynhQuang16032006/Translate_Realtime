@@ -66,8 +66,12 @@ export class SpeechRecognitionService {
     try {
       const recognition = new SpeechRecognition();
 
-      // Continuous mode keeps session active while user is speaking
-      recognition.continuous = true;
+      const isMobile =
+        typeof navigator !== 'undefined' &&
+        /iPhone|iPad|iPod|Android|Mobile/i.test(navigator.userAgent);
+
+      // On iOS Safari & Mobile browsers, continuous must be false to stream real-time interim results as words are spoken
+      recognition.continuous = !isMobile;
       recognition.interimResults = true;
       recognition.maxAlternatives = 1;
 

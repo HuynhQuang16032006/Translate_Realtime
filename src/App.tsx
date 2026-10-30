@@ -241,53 +241,9 @@ export const App: React.FC = () => {
       // 1. Add to local state (appears on right side like Messenger)
       setMessages((prev) => [...prev, newMsg]);
 
-      // 2. Trigger Floating Live Speech Popup immediately for the speaker
-      const currentDeviceLang = userRef.current.lang;
-      const speakerTranslated = newMsg.translations[currentDeviceLang] || newMsg.originalText;
-      if (speakerTranslated) {
-        if (popupTimerRef.current) clearTimeout(popupTimerRef.current);
-        setLivePopup({
-          isVisible: true,
-          speakerName: newMsg.senderName,
-          translatedText: speakerTranslated,
-          originalText: newMsg.originalText,
-        });
-
-        popupTimerRef.current = setTimeout(() => {
-          setLivePopup((prev) => ({ ...prev, isVisible: false }));
-        }, 6000);
-      }
-
-      // 3. Broadcast to room via MQTT so other devices can hear and read immediately
+      // 2. Broadcast to room via MQTT so other devices can hear and read immediately in their language
       if (mqttServiceRef.current) {
         mqttServiceRef.current.broadcastTranslation(newMsg);
-      }
-
-      // 4. Auto-Speak for speaker's device (speaks translated target language for partner or self verification)
-      if (autoSpeakRef.current) {
-        const targetLangToSpeak: Language =
-          newMsg.detectedLang === 'zh'
-            ? 'vi'
-            : newMsg.detectedLang === 'vi'
-            ? 'zh'
-            : (currentDeviceLang === 'en' ? 'zh' : 'en');
-
-        const textToSpeak = newMsg.translations[targetLangToSpeak] || speakerTranslated;
-        if (textToSpeak) {
-          setSpeakingMessageId(newMsg.id);
-          isSpeakingTtsRef.current = true;
-          speechService.speak(
-            textToSpeak,
-            targetLangToSpeak,
-            () => {
-              isSpeakingTtsRef.current = true;
-            },
-            () => {
-              isSpeakingTtsRef.current = false;
-              setSpeakingMessageId(null);
-            }
-          );
-        }
       }
     } catch (err: any) {
       console.error('Lỗi phiên dịch audio:', err);
