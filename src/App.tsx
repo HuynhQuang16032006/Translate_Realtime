@@ -79,16 +79,18 @@ export const App: React.FC = () => {
   const [isQrOpen, setIsQrOpen] = useState<boolean>(false);
   const [isExportOpen, setIsExportOpen] = useState<boolean>(false);
   const [liveTranscript, setLiveTranscript] = useState<string>('');
+  const liveTranscriptRef = useRef<string>('');
   const [reviewText, setReviewText] = useState<string>('');
 
   useEffect(() => {
     speechRecognitionHelper.setUpdateCallback((text) => {
+      liveTranscriptRef.current = text;
       setLiveTranscript(text);
     });
     speechRecognitionHelper.setErrorCallback((err) => {
       console.warn('SpeechRecognition error:', err);
       if (err === 'service-not-allowed' || err === 'not-allowed') {
-        showErrorToast('Mẹo: Vào Cài đặt iPhone > Bàn phím > Bật "Đọc chính tả" để máy hiện chữ trực tiếp.');
+        showErrorToast('Mẹo iPhone: Vào Cài đặt iPhone > Bàn phím > Bật "Bật Đọc chính tả" và Cho phép Micro trên Safari để hiện văn bản tức thời.');
       }
     });
   }, []);
@@ -322,6 +324,9 @@ export const App: React.FC = () => {
     if (audioRecorderRef.current?.isRecording()) {
       audioRecorderRef.current.stop().catch(() => null);
     }
+    if (speechRecognitionHelper.isSupported()) {
+      speechRecognitionHelper.reset();
+    }
     if (mediaStreamRef.current) {
       try {
         mediaStreamRef.current.getTracks().forEach((t) => t.stop());
@@ -330,6 +335,7 @@ export const App: React.FC = () => {
     }
     setIsRecording(false);
     setLiveTranscript('');
+    liveTranscriptRef.current = '';
     setReviewText('');
     mqttServiceRef.current?.broadcastUnlock();
   };
@@ -343,6 +349,12 @@ export const App: React.FC = () => {
     speechService.stop();
     setSpeakingMessageId(null);
     isSpeakingTtsRef.current = false;
+
+    // Detect iOS devices (iPhone / iPad)
+    const isIOS =
+      typeof navigator !== 'undefined' &&
+      (/iPad|iPhone|iPod/.test(navigator.userAgent) ||
+        (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1));
 
     // 2. Start Web Speech Recognition synchronously within user gesture for live text on screen
     let speechRecognitionActive = false;
@@ -362,49 +374,60 @@ export const App: React.FC = () => {
 
     setReviewText('');
     setLiveTranscript('');
+    liveTranscriptRef.current = '';
 
-    if (!audioRecorderRef.current) {
-      audioRecorderRef.current = new CrossBrowserAudioRecorder();
-    }
-
-    let stream = mediaStreamRef.current;
-    const isStreamValid =
-      stream &&
-      stream.active &&
-      stream.getAudioTracks().length > 0 &&
-      stream.getAudioTracks().every((t) => t.readyState === 'live' && !t.muted);
-
-    if (!isStreamValid) {
-      if (stream) {
-        try {
-          stream.getTracks().forEach((t) => t.stop());
-        } catch (e) {}
+    // 3. Audio Recording Handling
+    // CRITICAL iOS WebKit Fix:
+    // On iOS Safari, getUserMedia and webkitSpeechRecognition CANNOT run simultaneously.
+    // Calling getUserMedia while webkitSpeechRecognition is active kills speech recognition on iOS!
+    // Therefore, if speechRecognitionActive on iOS, DO NOT touch getUserMedia!
+    // Only fall back to getUserMedia + MediaRecorder if speechRecognition is unsupported or failed.
+    if (!isIOS || !speechRecognitionActive) {
+      if (!audioRecorderRef.current) {
+        audioRecorderRef.current = new CrossBrowserAudioRecorder();
       }
-      try {
-        stream = await navigator.mediaDevices.getUserMedia({
-          audio: {
-            echoCancellation: true,
-            noiseSuppression: true,
-            autoGainControl: true,
-          },
-        });
-        mediaStreamRef.current = stream;
-      } catch (e) {
-        console.warn('Lỗi mở Micro:', e);
-        if (!speechRecognitionActive) {
-          showErrorToast('Vui lòng cấp quyền Micro trong trình duyệt để thu âm.');
-          speechRecognitionHelper.stop().catch(() => '');
-          mqttServiceRef.current?.broadcastUnlock();
-          return;
+
+      let stream = mediaStreamRef.current;
+      const isStreamValid =
+        stream &&
+        stream.active &&
+        stream.getAudioTracks().length > 0 &&
+        stream.getAudioTracks().every((t) => t.readyState === 'live' && !t.muted);
+
+      if (!isStreamValid) {
+        if (stream) {
+          try {
+            stream.getTracks().forEach((t) => t.stop());
+          } catch (e) {}
+        }
+        try {
+          const audioConstraints = isIOS
+            ? { echoCancellation: true }
+            : {
+                echoCancellation: true,
+                noiseSuppression: true,
+                autoGainControl: true,
+              };
+
+          stream = await navigator.mediaDevices.getUserMedia({ audio: audioConstraints });
+          mediaStreamRef.current = stream;
+        } catch (e) {
+          console.warn('Lỗi mở Micro:', e);
+          if (!speechRecognitionActive) {
+            showErrorToast('Vui lòng cấp quyền Micro trong trình duyệt để thu âm.');
+            speechRecognitionHelper.stop().catch(() => '');
+            mqttServiceRef.current?.broadcastUnlock();
+            return;
+          }
         }
       }
-    }
 
-    if (stream) {
-      try {
-        audioRecorderRef.current.start(stream);
-      } catch (e) {
-        console.warn('Audio recorder start failed:', e);
+      if (stream) {
+        try {
+          audioRecorderRef.current.start(stream);
+        } catch (e) {
+          console.warn('Audio recorder start failed:', e);
+        }
       }
     }
 
@@ -445,6 +468,7 @@ export const App: React.FC = () => {
     const recognizedText = (
       clientTranscript ||
       speechRecognitionHelper.getCurrentTranscript() ||
+      liveTranscriptRef.current ||
       liveTranscript ||
       ''
     ).trim();

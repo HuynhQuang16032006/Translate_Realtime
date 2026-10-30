@@ -68,8 +68,17 @@ export class CrossBrowserAudioRecorder {
       }
     };
 
-    // Request data in 250ms chunks to ensure smooth data availability
-    this.mediaRecorder.start(250);
+    // On iOS Safari, passing a timeslice (e.g. 250) to start() causes audio corruption or silence in WebKit
+    const isIOS =
+      typeof navigator !== 'undefined' &&
+      (/iPad|iPhone|iPod/.test(navigator.userAgent) ||
+        (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1));
+
+    if (isIOS) {
+      this.mediaRecorder.start();
+    } else {
+      this.mediaRecorder.start(250);
+    }
   }
 
   public isRecording(): boolean {
@@ -97,8 +106,8 @@ export class CrossBrowserAudioRecorder {
         const mime = this.selectedMimeType || this.mediaRecorder?.mimeType || 'audio/webm';
         const audioBlob = new Blob(this.recordedChunks, { type: mime });
 
-        // Discard only if audio is practically empty (under 150ms or under 100 bytes)
-        if (durationMs < 150 || audioBlob.size < 100) {
+        // Discard only if audio is practically empty (under 150ms or under 80 bytes)
+        if (durationMs < 150 || audioBlob.size < 80) {
           resolve(null);
           return;
         }
@@ -125,7 +134,11 @@ export class CrossBrowserAudioRecorder {
         // Ignore if requestData not supported
       }
 
-      this.mediaRecorder.stop();
+      try {
+        this.mediaRecorder.stop();
+      } catch (e) {
+        resolve(null);
+      }
     });
   }
 

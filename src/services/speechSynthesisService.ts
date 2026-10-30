@@ -33,7 +33,11 @@ export class SpeechSynthesisService {
       this.audioPlayer
         .play()
         .then(() => {
-          this.audioPlayer?.pause();
+          if (this.audioPlayer) {
+            this.audioPlayer.pause();
+            this.audioPlayer.removeAttribute('src');
+            this.audioPlayer.load();
+          }
           this.isAudioUnlocked = true;
         })
         .catch(() => {});
@@ -62,11 +66,14 @@ export class SpeechSynthesisService {
     if (this.audioPlayer) {
       try {
         this.audioPlayer.pause();
-        this.audioPlayer.currentTime = 0;
+        this.audioPlayer.removeAttribute('src');
+        this.audioPlayer.load();
       } catch (e) {}
     }
     if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
-      window.speechSynthesis.cancel();
+      try {
+        window.speechSynthesis.cancel();
+      } catch (e) {}
     }
     this.isSpeakingNow = false;
   }
@@ -94,6 +101,13 @@ export class SpeechSynthesisService {
 
       const finish = () => {
         this.isSpeakingNow = false;
+        if (this.audioPlayer) {
+          try {
+            this.audioPlayer.pause();
+            this.audioPlayer.removeAttribute('src');
+            this.audioPlayer.load();
+          } catch (e) {}
+        }
         if (onEnd) onEnd();
         resolve();
       };
