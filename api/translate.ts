@@ -177,10 +177,10 @@ Nhiệm vụ:
 }`;
 
     const candidateModels = [
+      'gemini-3.5-flash-lite',
+      'gemini-3.5-flash',
       'gemini-3.8-flash',
-      'gemini-3-flash',
-      'gemini-2.5-flash',
-      'gemini-2.5-flash-lite',
+      'gemini-flash-latest',
     ];
 
     const mimeCandidates = cleanMimeType === 'audio/mp4'
@@ -194,6 +194,16 @@ Nhiệm vụ:
     for (const modelName of candidateModels) {
       for (const currentMime of mimeCandidates) {
         try {
+          const generationConfig: any = {
+            response_mime_type: 'application/json',
+            temperature: 0.1,
+          };
+          if (modelName === 'gemini-3.8-flash') {
+            generationConfig.thinking_config = { thinking_level: 'LOW' };
+          } else if (modelName.includes('3.5')) {
+            generationConfig.thinking_config = { thinking_level: 'minimal' };
+          }
+
           const payload = {
             system_instruction: {
               parts: [{ text: systemInstruction }],
@@ -214,10 +224,7 @@ Nhiệm vụ:
                 ],
               },
             ],
-            generation_config: {
-              response_mime_type: 'application/json',
-              temperature: 0.1,
-            },
+            generation_config: generationConfig,
           };
 
           const geminiResp = await fetch(
@@ -226,7 +233,7 @@ Nhiệm vụ:
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify(payload),
-              signal: AbortSignal.timeout(12000), // 12s timeout for mobile audio processing
+              signal: AbortSignal.timeout(15000), // 15s timeout for mobile audio processing
             }
           );
 
