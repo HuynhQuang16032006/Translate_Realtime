@@ -85,6 +85,12 @@ export const App: React.FC = () => {
     speechRecognitionHelper.setUpdateCallback((text) => {
       setLiveTranscript(text);
     });
+    speechRecognitionHelper.setErrorCallback((err) => {
+      console.warn('SpeechRecognition error:', err);
+      if (err === 'service-not-allowed' || err === 'not-allowed') {
+        showErrorToast('Mẹo: Vào Cài đặt iPhone > Bàn phím > Bật "Đọc chính tả" để máy hiện chữ trực tiếp.');
+      }
+    });
   }, []);
 
   // Service References
@@ -338,13 +344,11 @@ export const App: React.FC = () => {
     setSpeakingMessageId(null);
     isSpeakingTtsRef.current = false;
 
-    // 2. Unlock audio autoplay on user touch gesture
-    speechService.unlockMobileAudio();
-
-    // 3. Start Web Speech Recognition synchronously within user gesture for live text on screen
+    // 2. Start Web Speech Recognition synchronously within user gesture for live text on screen
+    let speechRecognitionActive = false;
     if (speechRecognitionHelper.isSupported()) {
       try {
-        speechRecognitionHelper.start(userRef.current.lang);
+        speechRecognitionActive = speechRecognitionHelper.start(userRef.current.lang);
       } catch (e) {
         console.warn('SpeechRecognition start failed:', e);
       }
@@ -359,71 +363,61 @@ export const App: React.FC = () => {
     setReviewText('');
     setLiveTranscript('');
 
-    // 4. ALWAYS initialize CrossBrowserAudioRecorder
-    if (!audioRecorderRef.current) {
-      audioRecorderRef.current = new CrossBrowserAudioRecorder();
-    }
+    const isIOS =
+      typeof navigator !== 'undefined' &&
+      (/iPad|iPhone|iPod/.test(navigator.userAgent) ||
+        (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1));
 
-    // 5. Ensure fresh, active, UNMUTED media stream
-    let stream = mediaStreamRef.current;
-    const isStreamValid =
-      stream &&
-      stream.active &&
-      stream.getAudioTracks().length > 0 &&
-      stream.getAudioTracks().every((t) => t.readyState === 'live' && !t.muted);
+    // On iOS Safari: If SpeechRecognition is active, DO NOT run MediaRecorder concurrently.
+    // WebKit cannot share the hardware mic and kills SpeechRecognition if getUserMedia runs!
+    // On non-iOS (laptop Chrome, Android) or if SpeechRecognition is not active, run MediaRecorder.
+    if (!isIOS || !speechRecognitionActive) {
+      if (!audioRecorderRef.current) {
+        audioRecorderRef.current = new CrossBrowserAudioRecorder();
+      }
 
-    if (!isStreamValid) {
+      let stream = mediaStreamRef.current;
+      const isStreamValid =
+        stream &&
+        stream.active &&
+        stream.getAudioTracks().length > 0 &&
+        stream.getAudioTracks().every((t) => t.readyState === 'live' && !t.muted);
+
+      if (!isStreamValid) {
+        if (stream) {
+          try {
+            stream.getTracks().forEach((t) => t.stop());
+          } catch (e) {}
+        }
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({
+            audio: {
+              echoCancellation: true,
+              noiseSuppression: true,
+              autoGainControl: true,
+            },
+          });
+          mediaStreamRef.current = stream;
+        } catch (e) {
+          console.warn('Lỗi mở Micro:', e);
+          if (!speechRecognitionActive) {
+            showErrorToast('Vui lòng cấp quyền Micro trong trình duyệt để thu âm.');
+            speechRecognitionHelper.stop().catch(() => '');
+            mqttServiceRef.current?.broadcastUnlock();
+            return;
+          }
+        }
+      }
+
       if (stream) {
         try {
-          stream.getTracks().forEach((t) => t.stop());
-        } catch (e) {}
-      }
-      try {
-        stream = await navigator.mediaDevices.getUserMedia({
-          audio: {
-            echoCancellation: true,
-            noiseSuppression: true,
-            autoGainControl: true,
-          },
-        });
-        mediaStreamRef.current = stream;
-      } catch (e) {
-        console.warn('Lỗi mở Micro:', e);
-        showErrorToast('Vui lòng cấp quyền Micro trong trình duyệt để thu âm.');
-        speechRecognitionHelper.stop().catch(() => '');
-        mqttServiceRef.current?.broadcastUnlock();
-        return;
+          audioRecorderRef.current.start(stream);
+        } catch (e) {
+          console.warn('Audio recorder start failed:', e);
+        }
       }
     }
 
-    if (!stream) {
-      showErrorToast('Không thể kết nối Micro. Hãy cấp quyền Micro và thử lại.');
-      speechRecognitionHelper.stop().catch(() => '');
-      mqttServiceRef.current?.broadcastUnlock();
-      return;
-    }
-
-    // 6. ALWAYS start MediaRecorder! Guaranteed audio capture on ALL devices (iOS & Android)
-    try {
-      audioRecorderRef.current.start(stream);
-    } catch (e) {
-      console.warn('Audio recorder start failed, retrying with basic stream:', e);
-      try {
-        const fallbackStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        mediaStreamRef.current = fallbackStream;
-        audioRecorderRef.current.start(fallbackStream);
-      } catch (retryErr) {
-        console.error('Audio recorder retry failed:', retryErr);
-        showErrorToast('Không thể khởi động bộ thu âm. Hãy cấp quyền Micro và thử lại.');
-        speechRecognitionHelper.stop().catch(() => '');
-        mqttServiceRef.current?.broadcastUnlock();
-        return;
-      }
-    }
-
-    // 7. CRITICAL: ONLY NOW set isRecording(true)!
-    // The red recording box appears ONLY after MediaRecorder is actually listening.
-    // The user's speech is NEVER clipped at the start!
     setIsRecording(true);
   };
 

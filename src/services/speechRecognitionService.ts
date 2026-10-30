@@ -66,8 +66,14 @@ export class SpeechRecognitionService {
     try {
       const recognition = new SpeechRecognition();
 
-      // Continuous listening is essential for real-time word streaming as the user speaks
-      recognition.continuous = true;
+      const isIOS =
+        typeof navigator !== 'undefined' &&
+        (/iPad|iPhone|iPod/.test(navigator.userAgent) ||
+          (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1));
+
+      // On iOS Safari, continuous must be false or WebKit hangs and suppresses interimResults.
+      // On Android / Desktop Chrome, continuous can be true.
+      recognition.continuous = !isIOS;
       recognition.interimResults = true;
       recognition.maxAlternatives = 1;
 
@@ -95,7 +101,8 @@ export class SpeechRecognitionService {
           }
         }
 
-        const full = (finalStr + (interimStr ? ' ' + interimStr : '')).trim();
+        const segmentText = (finalStr + (interimStr ? ' ' + interimStr : '')).trim();
+        const full = (this.accumulatedTranscript ? this.accumulatedTranscript + ' ' + segmentText : segmentText).trim();
         if (full) {
           this.currentTranscript = full;
           if (this.onUpdateCallback) {
@@ -132,21 +139,18 @@ export class SpeechRecognitionService {
       };
 
       recognition.onend = () => {
-        // Seamless auto-restart if still listening and not ended by user
+        // On iOS Safari or phrase boundaries, seamlessly restart to continue listening
         if (this.isListening) {
+          if (this.currentTranscript) {
+            this.accumulatedTranscript = this.currentTranscript;
+          }
           try {
             recognition.start();
           } catch (e) {
-            setTimeout(() => {
-              if (this.isListening) {
-                try {
-                  this.destroyCurrentSession();
-                  this.initAndStart();
-                } catch (err) {
-                  // Fallback
-                }
-              }
-            }, 100);
+            if (this.isListening) {
+              this.destroyCurrentSession();
+              this.initAndStart();
+            }
           }
         }
       };
