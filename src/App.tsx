@@ -278,25 +278,7 @@ export const App: React.FC = () => {
     // 1. Initialize Audio Recorder instance
     audioRecorderRef.current = new CrossBrowserAudioRecorder();
 
-    // 2. Pre-warm microphone hardware so subsequent voice recordings start in 0ms without clipping
-    if (navigator.mediaDevices?.getUserMedia) {
-      navigator.mediaDevices
-        .getUserMedia({
-          audio: {
-            echoCancellation: true,
-            noiseSuppression: true,
-            autoGainControl: true,
-          },
-        })
-        .then((stream) => {
-          mediaStreamRef.current = stream;
-        })
-        .catch((err) => {
-          console.warn('Microphone permission deferred or denied on join:', err);
-        });
-    }
-
-    // 3. Initialize MQTT Realtime Service
+    // 2. Initialize MQTT Realtime Service
     const mqttService = new MqttSyncService({
       roomId: room,
       peerId,
@@ -327,6 +309,12 @@ export const App: React.FC = () => {
     if (audioRecorderRef.current?.isRecording()) {
       audioRecorderRef.current.stop().catch(() => null);
     }
+    if (mediaStreamRef.current) {
+      try {
+        mediaStreamRef.current.getTracks().forEach((t) => t.stop());
+      } catch (e) {}
+      mediaStreamRef.current = null;
+    }
     setIsRecording(false);
     setLiveTranscript('');
     setReviewText('');
@@ -346,12 +334,10 @@ export const App: React.FC = () => {
     // 2. Unlock audio autoplay on user touch gesture
     speechService.unlockMobileAudio();
 
-    // 3. SYNCHRONOUSLY START SPEECH RECOGNITION (Directly within user gesture tick!)
-    // Critical for iOS Safari: SpeechRecognition.start() MUST be executed inside the direct user-gesture event tick
-    let speechRecognitionActive = false;
+    // 3. Start Web Speech Recognition synchronously within user gesture for live text on screen
     if (speechRecognitionHelper.isSupported()) {
       try {
-        speechRecognitionActive = speechRecognitionHelper.start(userRef.current.lang);
+        speechRecognitionHelper.start(userRef.current.lang);
       } catch (e) {
         console.warn('SpeechRecognition start failed:', e);
       }
@@ -365,51 +351,73 @@ export const App: React.FC = () => {
 
     setReviewText('');
     setLiveTranscript('');
-    setIsRecording(true);
 
-    const isIOS =
-      typeof navigator !== 'undefined' &&
-      (/iPad|iPhone|iPod/.test(navigator.userAgent) ||
-        (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1));
+    // 4. ALWAYS initialize CrossBrowserAudioRecorder
+    if (!audioRecorderRef.current) {
+      audioRecorderRef.current = new CrossBrowserAudioRecorder();
+    }
 
-    // On iOS Safari: If SpeechRecognition is active, avoid running MediaRecorder concurrently
-    // because iOS WebKit has a known audio hardware collision where getUserMedia blocks SpeechRecognition.
-    // On Android/PC or if SpeechRecognition is not active, start MediaRecorder as guaranteed capture.
-    if (!isIOS || !speechRecognitionActive) {
-      if (!audioRecorderRef.current) {
-        audioRecorderRef.current = new CrossBrowserAudioRecorder();
-      }
+    // 5. Ensure fresh, active, UNMUTED media stream
+    let stream = mediaStreamRef.current;
+    const isStreamValid =
+      stream &&
+      stream.active &&
+      stream.getAudioTracks().length > 0 &&
+      stream.getAudioTracks().every((t) => t.readyState === 'live' && !t.muted);
 
-      let stream = mediaStreamRef.current;
-      if (!stream || !stream.active || stream.getAudioTracks().every((t) => t.readyState === 'ended')) {
+    if (!isStreamValid) {
+      if (stream) {
         try {
-          stream = await navigator.mediaDevices.getUserMedia({
-            audio: {
-              echoCancellation: true,
-              noiseSuppression: true,
-              autoGainControl: true,
-            },
-          });
-          mediaStreamRef.current = stream;
-        } catch (e) {
-          console.warn('Lỗi mở Micro:', e);
-          if (!speechRecognitionActive) {
-            showErrorToast('Vui lòng cấp quyền Micro trong trình duyệt để đàm thoại.');
-            setIsRecording(false);
-            mqttServiceRef.current?.broadcastUnlock();
-            return;
-          }
-        }
+          stream.getTracks().forEach((t) => t.stop());
+        } catch (e) {}
       }
-
-      if (stream && stream.active) {
-        try {
-          audioRecorderRef.current.start(stream);
-        } catch (e) {
-          console.warn('Audio recorder start failed:', e);
-        }
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+          },
+        });
+        mediaStreamRef.current = stream;
+      } catch (e) {
+        console.warn('Lỗi mở Micro:', e);
+        showErrorToast('Vui lòng cấp quyền Micro trong trình duyệt để thu âm.');
+        speechRecognitionHelper.stop().catch(() => '');
+        mqttServiceRef.current?.broadcastUnlock();
+        return;
       }
     }
+
+    if (!stream) {
+      showErrorToast('Không thể kết nối Micro. Hãy cấp quyền Micro và thử lại.');
+      speechRecognitionHelper.stop().catch(() => '');
+      mqttServiceRef.current?.broadcastUnlock();
+      return;
+    }
+
+    // 6. ALWAYS start MediaRecorder! Guaranteed audio capture on ALL devices (iOS & Android)
+    try {
+      audioRecorderRef.current.start(stream);
+    } catch (e) {
+      console.warn('Audio recorder start failed, retrying with basic stream:', e);
+      try {
+        const fallbackStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        mediaStreamRef.current = fallbackStream;
+        audioRecorderRef.current.start(fallbackStream);
+      } catch (retryErr) {
+        console.error('Audio recorder retry failed:', retryErr);
+        showErrorToast('Không thể khởi động bộ thu âm. Hãy cấp quyền Micro và thử lại.');
+        speechRecognitionHelper.stop().catch(() => '');
+        mqttServiceRef.current?.broadcastUnlock();
+        return;
+      }
+    }
+
+    // 7. CRITICAL: ONLY NOW set isRecording(true)!
+    // The red recording box appears ONLY after MediaRecorder is actually listening.
+    // The user's speech is NEVER clipped at the start!
+    setIsRecording(true);
   };
 
   // Direct Text Message Send (Instant Messenger-style translation)
@@ -434,6 +442,14 @@ export const App: React.FC = () => {
         ? speechRecognitionHelper.stop().catch(() => '')
         : Promise.resolve(''),
     ]);
+
+    // Release microphone hardware immediately so Safari never mutes tracks while idle
+    if (mediaStreamRef.current) {
+      try {
+        mediaStreamRef.current.getTracks().forEach((t) => t.stop());
+      } catch (e) {}
+      mediaStreamRef.current = null;
+    }
 
     const recognizedText = (
       clientTranscript ||
