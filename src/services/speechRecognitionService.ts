@@ -117,7 +117,7 @@ export class SpeechRecognitionService {
         }
 
         // On non-fatal network hiccups, attempt fresh reconnection if user is still holding recording
-        const fatalErrors = ['not-allowed', 'service-not-allowed', 'audio-capture'];
+        const fatalErrors = ['not-allowed', 'service-not-allowed', 'language-not-supported'];
         if (this.isListening && !fatalErrors.includes(error)) {
           setTimeout(() => {
             if (this.isListening) {

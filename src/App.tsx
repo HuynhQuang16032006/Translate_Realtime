@@ -89,8 +89,16 @@ export const App: React.FC = () => {
     });
     speechRecognitionHelper.setErrorCallback((err) => {
       console.warn('SpeechRecognition error:', err);
-      if (err === 'service-not-allowed' || err === 'not-allowed') {
-        showErrorToast('Mẹo iPhone: Vào Cài đặt iPhone > Bàn phím > Bật "Bật Đọc chính tả" và Cho phép Micro trên Safari để hiện văn bản tức thời.');
+      if (err === 'service-not-allowed' || err === 'not-allowed' || err === 'language-not-supported') {
+        const isIOS =
+          typeof navigator !== 'undefined' &&
+          (/iPad|iPhone|iPod/.test(navigator.userAgent) ||
+            (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1));
+        if (isIOS) {
+          showErrorToast('Mẹo iPhone: Vào Cài đặt iPhone > Bàn phím > Bật "Bật Đọc chính tả" và Cho phép Micro trên Safari/Chrome để hiện văn bản tức thời.');
+        } else {
+          showErrorToast('Mẹo Samsung / Android: Hãy mở trang bằng Google Chrome và Cho phép Micro để hiển thị văn bản thời gian thực.');
+        }
       }
     });
   }, []);
@@ -352,11 +360,13 @@ export const App: React.FC = () => {
         (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1));
 
     // 2. Start Web Speech Recognition synchronously within user gesture for live text on screen
+    let startedSpeechRecognition = false;
     if (speechRecognitionHelper.isSupported()) {
       try {
-        speechRecognitionHelper.start(userRef.current.lang);
+        startedSpeechRecognition = speechRecognitionHelper.start(userRef.current.lang);
       } catch (e) {
         console.warn('SpeechRecognition start failed:', e);
+        startedSpeechRecognition = false;
       }
     }
 
@@ -371,60 +381,64 @@ export const App: React.FC = () => {
     liveTranscriptRef.current = '';
 
     // 3. Audio Recording Handling
-    // GUARANTEED Recording on ALL devices (iOS Safari, iOS Chrome, Android, Desktop)
-    if (!audioRecorderRef.current) {
-      audioRecorderRef.current = new CrossBrowserAudioRecorder();
-    }
-
-    let stream = mediaStreamRef.current;
-    const isStreamValid =
-      stream &&
-      stream.active &&
-      stream.getAudioTracks().length > 0 &&
-      stream.getAudioTracks().every((t) => t.readyState === 'live' && !t.muted);
-
-    if (!isStreamValid) {
-      if (stream) {
-        try {
-          stream.getTracks().forEach((t) => t.stop());
-        } catch (e) {}
+    // Only engage getUserMedia / MediaRecorder if SpeechRecognition is NOT supported or failed to start!
+    // On Android (Samsung Galaxy), running getUserMedia simultaneously with SpeechRecognition causes
+    // AudioRecord HAL hardware contention that immediately kills SpeechRecognition and suppresses live text!
+    if (!startedSpeechRecognition) {
+      if (!audioRecorderRef.current) {
+        audioRecorderRef.current = new CrossBrowserAudioRecorder();
       }
-      try {
-        const audioConstraints = isIOS
-          ? true
-          : {
-              echoCancellation: true,
-              noiseSuppression: true,
-              autoGainControl: true,
-            };
 
-        try {
-          stream = await navigator.mediaDevices.getUserMedia({ audio: audioConstraints });
-        } catch (constraintErr) {
-          // Fallback without constraints for picky browsers
-          stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      let stream = mediaStreamRef.current;
+      const isStreamValid =
+        stream &&
+        stream.active &&
+        stream.getAudioTracks().length > 0 &&
+        stream.getAudioTracks().every((t) => t.readyState === 'live' && !t.muted);
+
+      if (!isStreamValid) {
+        if (stream) {
+          try {
+            stream.getTracks().forEach((t) => t.stop());
+          } catch (e) {}
         }
-        mediaStreamRef.current = stream;
-      } catch (e: any) {
-        console.warn('Lỗi mở Micro:', e);
-        showErrorToast('Vui lòng cấp quyền Micro trong Safari: Bấm vào biểu tượng bên trái thanh địa chỉ web (aA hoặc ☰) > Cài đặt trang web > Micrô: Cho phép.');
+        try {
+          const audioConstraints = isIOS
+            ? true
+            : {
+                echoCancellation: true,
+                noiseSuppression: true,
+                autoGainControl: true,
+              };
+
+          try {
+            stream = await navigator.mediaDevices.getUserMedia({ audio: audioConstraints });
+          } catch (constraintErr) {
+            // Fallback without constraints for picky browsers
+            stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          }
+          mediaStreamRef.current = stream;
+        } catch (e: any) {
+          console.warn('Lỗi mở Micro:', e);
+          showErrorToast('Vui lòng cấp quyền Micro trong cài đặt trình duyệt để sử dụng.');
+          speechRecognitionHelper.stop().catch(() => '');
+          mqttServiceRef.current?.broadcastUnlock();
+          return;
+        }
+      }
+
+      if (!stream) {
+        showErrorToast('Không thể kích hoạt Micro. Hãy thử làm mới trang hoặc kiểm tra quyền Micro.');
         speechRecognitionHelper.stop().catch(() => '');
         mqttServiceRef.current?.broadcastUnlock();
         return;
       }
-    }
 
-    if (!stream) {
-      showErrorToast('Không thể kích hoạt Micro. Hãy thử làm mới trang hoặc kiểm tra quyền Safari.');
-      speechRecognitionHelper.stop().catch(() => '');
-      mqttServiceRef.current?.broadcastUnlock();
-      return;
-    }
-
-    try {
-      audioRecorderRef.current.start(stream);
-    } catch (e) {
-      console.warn('Audio recorder start failed:', e);
+      try {
+        audioRecorderRef.current.start(stream);
+      } catch (e) {
+        console.warn('Audio recorder start failed:', e);
+      }
     }
 
     setIsRecording(true);
