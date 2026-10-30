@@ -353,6 +353,11 @@ export const App: React.FC = () => {
       (/iPad|iPhone|iPod/.test(navigator.userAgent) ||
         (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1));
 
+    // Detect mobile vs desktop platforms
+    const isMobile =
+      typeof navigator !== 'undefined' &&
+      /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+
     // On iOS Safari, release any background getUserMedia streams so WebKit SpeechRecognition has exclusive mic access
     if (isIOS && mediaStreamRef.current) {
       try {
@@ -383,10 +388,11 @@ export const App: React.FC = () => {
     liveTranscriptRef.current = '';
 
     // 3. Audio Recording Handling
-    // On both iOS (Safari) and Android (Samsung), do NOT run getUserMedia concurrently with SpeechRecognition!
-    // Running both concurrently creates AVAudioSession / AudioRecord HAL hardware contention,
-    // starving Web Speech API and forcing a 5-10s Gemini audio fallback.
-    const shouldRecordAudio = !startedSpeechRecognition;
+    // On Laptop / Desktop PC: ALWAYS record audio concurrently as a 100% fail-safe fallback!
+    // Desktop OS (Windows, macOS, Linux) have multi-channel audio mixing and zero hardware contention.
+    // On Mobile (iOS / Android): Only record audio if SpeechRecognition is NOT active,
+    // to prevent mobile single-pipeline hardware locks that starve the speech recognition engine.
+    const shouldRecordAudio = !isMobile || !startedSpeechRecognition;
 
     if (shouldRecordAudio) {
       if (!audioRecorderRef.current) {

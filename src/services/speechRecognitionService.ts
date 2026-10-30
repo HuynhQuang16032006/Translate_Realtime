@@ -233,25 +233,52 @@ export class SpeechRecognitionService {
 
   public stop(): Promise<string> {
     this.isListening = false;
-    const text = (this.currentTranscript || this.accumulatedTranscript).trim();
 
-    if (this.recognition) {
-      const rec = this.recognition;
-      this.recognition = null;
-      try {
-        rec.onresult = null;
-        rec.onerror = null;
-        rec.onend = null;
-        // On iOS WebKit, abort() forcefully releases the audio hardware immediately
-        rec.abort();
-      } catch (e) {
-        try {
-          rec.stop();
-        } catch (e2) {}
+    return new Promise((resolve) => {
+      const existingText = (this.currentTranscript || this.accumulatedTranscript).trim();
+
+      if (!this.recognition) {
+        return resolve(existingText);
       }
-    }
 
-    return Promise.resolve(text);
+      const rec = this.recognition;
+      let resolved = false;
+
+      const finish = () => {
+        if (resolved) return;
+        resolved = true;
+        const finalText = (this.currentTranscript || this.accumulatedTranscript).trim();
+        this.destroyCurrentSession();
+        resolve(finalText);
+      };
+
+      // Allow up to 400ms for browser engine to deliver the final spoken chunk
+      const timer = setTimeout(finish, 400);
+
+      const prevOnResult = rec.onresult;
+      rec.onresult = (event: any) => {
+        if (prevOnResult) {
+          prevOnResult(event);
+        }
+      };
+
+      rec.onend = () => {
+        clearTimeout(timer);
+        finish();
+      };
+
+      rec.onerror = () => {
+        clearTimeout(timer);
+        finish();
+      };
+
+      try {
+        rec.stop();
+      } catch (e) {
+        clearTimeout(timer);
+        finish();
+      }
+    });
   }
 
   public getCurrentTranscript(): string {
