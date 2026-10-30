@@ -128,8 +128,13 @@ export class SpeechRecognitionService {
     try {
       const recognition = new SpeechRecognition();
 
-      // Enable continuous and interimResults for smooth real-time text display across all platforms
-      recognition.continuous = true;
+      // On iOS Safari, continuous = false prevents WebKit audio session crashes and ghost state freezes
+      const isIOS =
+        typeof navigator !== 'undefined' &&
+        (/iPad|iPhone|iPod/.test(navigator.userAgent) ||
+          (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1));
+
+      recognition.continuous = !isIOS;
       recognition.interimResults = true;
       recognition.maxAlternatives = 1;
 

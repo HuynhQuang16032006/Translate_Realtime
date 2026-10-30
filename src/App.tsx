@@ -353,6 +353,14 @@ export const App: React.FC = () => {
       (/iPad|iPhone|iPod/.test(navigator.userAgent) ||
         (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1));
 
+    // On iOS Safari, release any background getUserMedia streams so WebKit SpeechRecognition has exclusive mic access
+    if (isIOS && mediaStreamRef.current) {
+      try {
+        mediaStreamRef.current.getTracks().forEach((t) => t.stop());
+      } catch (e) {}
+      mediaStreamRef.current = null;
+    }
+
     // 2. Start Web Speech Recognition synchronously within user gesture for live text on screen
     let startedSpeechRecognition = false;
     if (speechRecognitionHelper.isSupported()) {
@@ -375,11 +383,10 @@ export const App: React.FC = () => {
     liveTranscriptRef.current = '';
 
     // 3. Audio Recording Handling
-    // On iOS (iPhone): ALWAYS run MediaRecorder concurrently as a guaranteed safety net,
-    // because iOS WebKit speech recognition can drop into zombie state on subsequent recordings!
-    // On Android (Samsung Galaxy): Only run MediaRecorder if SpeechRecognition is NOT active,
-    // to prevent Android AudioRecord HAL hardware contention that breaks speech recognition.
-    const shouldRecordAudio = isIOS || !startedSpeechRecognition;
+    // On both iOS (Safari) and Android (Samsung), do NOT run getUserMedia concurrently with SpeechRecognition!
+    // Running both concurrently creates AVAudioSession / AudioRecord HAL hardware contention,
+    // starving Web Speech API and forcing a 5-10s Gemini audio fallback.
+    const shouldRecordAudio = !startedSpeechRecognition;
 
     if (shouldRecordAudio) {
       if (!audioRecorderRef.current) {
@@ -464,7 +471,17 @@ export const App: React.FC = () => {
         : Promise.resolve(''),
     ]);
 
-    // Note: Keep mediaStreamRef.current alive while in room so subsequent recordings start instantly without hardware re-acquisition latency
+    // On iOS Safari, physically release media tracks so WebKit speech recognition can access mic on subsequent turns
+    const isIOSDevice =
+      typeof navigator !== 'undefined' &&
+      (/iPad|iPhone|iPod/.test(navigator.userAgent) ||
+        (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1));
+    if (isIOSDevice && mediaStreamRef.current) {
+      try {
+        mediaStreamRef.current.getTracks().forEach((t) => t.stop());
+      } catch (e) {}
+      mediaStreamRef.current = null;
+    }
 
     const recognizedText = (
       clientTranscript ||
