@@ -215,14 +215,6 @@ export class SpeechRecognitionService {
       return true;
     } catch (err) {
       console.warn('Lỗi khởi động SpeechRecognition:', err);
-      // Auto-retry once after 150ms if browser was still releasing previous session
-      if (this.isListening) {
-        setTimeout(() => {
-          if (this.isListening && !this.recognition) {
-            this.initAndStart();
-          }
-        }, 150);
-      }
       return false;
     }
   }

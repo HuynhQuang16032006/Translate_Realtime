@@ -66,9 +66,12 @@ export class SpeechSynthesisService {
     if (this.audioPlayer) {
       try {
         this.audioPlayer.pause();
+        this.audioPlayer.currentTime = 0;
         this.audioPlayer.removeAttribute('src');
+        this.audioPlayer.src = '';
         this.audioPlayer.load();
       } catch (e) {}
+      this.audioPlayer = null; // Crucial: physically release iOS CoreAudio playback lock
     }
     if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
       try {
@@ -104,9 +107,12 @@ export class SpeechSynthesisService {
         if (this.audioPlayer) {
           try {
             this.audioPlayer.pause();
+            this.audioPlayer.currentTime = 0;
             this.audioPlayer.removeAttribute('src');
+            this.audioPlayer.src = '';
             this.audioPlayer.load();
           } catch (e) {}
+          this.audioPlayer = null; // Crucial: physically release iOS CoreAudio playback lock
         }
         if (onEnd) onEnd();
         resolve();
