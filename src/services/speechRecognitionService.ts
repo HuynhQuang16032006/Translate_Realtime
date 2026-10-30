@@ -128,8 +128,14 @@ export class SpeechRecognitionService {
     try {
       const recognition = new SpeechRecognition();
 
-      // Always enable continuous and interimResults for smooth real-time text display
-      recognition.continuous = true;
+      const isIOS =
+        typeof navigator !== 'undefined' &&
+        (/iPad|iPhone|iPod/.test(navigator.userAgent) ||
+          (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1));
+
+      // On iOS WebKit (Safari & Chrome on iPhone), continuous must be false to avoid AVAudioSession zombie lock.
+      // On Android / Desktop, continuous is true.
+      recognition.continuous = !isIOS;
       recognition.interimResults = true;
       recognition.maxAlternatives = 1;
 
@@ -238,10 +244,11 @@ export class SpeechRecognitionService {
         rec.onresult = null;
         rec.onerror = null;
         rec.onend = null;
-        rec.stop();
+        // On iOS WebKit, abort() forcefully releases the audio hardware immediately
+        rec.abort();
       } catch (e) {
         try {
-          rec.abort();
+          rec.stop();
         } catch (e2) {}
       }
     }

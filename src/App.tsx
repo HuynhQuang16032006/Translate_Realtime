@@ -381,10 +381,13 @@ export const App: React.FC = () => {
     liveTranscriptRef.current = '';
 
     // 3. Audio Recording Handling
-    // Only engage getUserMedia / MediaRecorder if SpeechRecognition is NOT supported or failed to start!
-    // On Android (Samsung Galaxy), running getUserMedia simultaneously with SpeechRecognition causes
-    // AudioRecord HAL hardware contention that immediately kills SpeechRecognition and suppresses live text!
-    if (!startedSpeechRecognition) {
+    // On iOS (iPhone): ALWAYS run MediaRecorder concurrently as a guaranteed safety net,
+    // because iOS WebKit speech recognition can drop into zombie state on subsequent recordings!
+    // On Android (Samsung Galaxy): Only run MediaRecorder if SpeechRecognition is NOT active,
+    // to prevent Android AudioRecord HAL hardware contention that breaks speech recognition.
+    const shouldRecordAudio = isIOS || !startedSpeechRecognition;
+
+    if (shouldRecordAudio) {
       if (!audioRecorderRef.current) {
         audioRecorderRef.current = new CrossBrowserAudioRecorder();
       }
