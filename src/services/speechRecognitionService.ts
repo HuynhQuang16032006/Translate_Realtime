@@ -128,14 +128,8 @@ export class SpeechRecognitionService {
     try {
       const recognition = new SpeechRecognition();
 
-      const isIOS =
-        typeof navigator !== 'undefined' &&
-        (/iPad|iPhone|iPod/.test(navigator.userAgent) ||
-          (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1));
-
-      // On iOS WebKit (Safari & Chrome on iPhone), continuous must be false to avoid AVAudioSession zombie lock.
-      // On Android / Desktop, continuous is true.
-      recognition.continuous = !isIOS;
+      // Enable continuous and interimResults for smooth real-time text display across all platforms
+      recognition.continuous = true;
       recognition.interimResults = true;
       recognition.maxAlternatives = 1;
 
@@ -203,14 +197,13 @@ export class SpeechRecognitionService {
           if (this.currentTranscript) {
             this.accumulatedTranscript = this.currentTranscript;
           }
-          // Restart recognition smoothly if user is still speaking
+          // Restart with a fresh session instance if user is still speaking
           setTimeout(() => {
-            if (this.isListening && this.recognition) {
+            if (this.isListening) {
               try {
-                this.recognition.start();
-              } catch (e) {
-                // If browser restricts start without gesture, keep existing accumulated text
-              }
+                this.destroyCurrentSession();
+                this.initAndStart();
+              } catch (e) {}
             }
           }, 150);
         }

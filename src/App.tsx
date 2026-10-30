@@ -326,16 +326,10 @@ export const App: React.FC = () => {
     mqttServiceRef.current?.broadcastDeleteMessage(messageId);
   };
 
-  // Cancel current recording (if AI misheard before sending)
+  // Cancel current recording (if user clicks cancel or cancels review)
   const handleCancelRecord = () => {
-    speechRecognitionHelper.stop().catch(() => '');
-    if (audioRecorderRef.current?.isRecording()) {
-      audioRecorderRef.current.stop().catch(() => null);
-    }
-    if (speechRecognitionHelper.isSupported()) {
-      speechRecognitionHelper.reset();
-    }
-    // Keep mediaStreamRef.current alive for seamless subsequent recording
+    audioRecorderRef.current?.reset();
+    speechRecognitionHelper.reset();
     setIsRecording(false);
     setLiveTranscript('');
     liveTranscriptRef.current = '';
@@ -507,7 +501,13 @@ export const App: React.FC = () => {
   };
 
   const handleDismissReview = () => {
+    audioRecorderRef.current?.reset();
+    speechRecognitionHelper.reset();
+    setIsRecording(false);
     setReviewText('');
+    setLiveTranscript('');
+    liveTranscriptRef.current = '';
+    mqttServiceRef.current?.broadcastUnlock();
   };
 
   // Manual TTS Playback on message click

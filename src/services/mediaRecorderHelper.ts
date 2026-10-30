@@ -92,6 +92,21 @@ export class CrossBrowserAudioRecorder {
     return this.mediaRecorder?.state === 'recording';
   }
 
+  public reset(): void {
+    if (this.mediaRecorder) {
+      try {
+        this.mediaRecorder.ondataavailable = null;
+        this.mediaRecorder.onstop = null;
+        if (this.mediaRecorder.state !== 'inactive') {
+          this.mediaRecorder.stop();
+        }
+      } catch (e) {}
+      this.mediaRecorder = null;
+    }
+    this.recordedChunks = [];
+    this.startTime = 0;
+  }
+
   public async stop(): Promise<AudioRecordResult | null> {
     if (!this.mediaRecorder || this.mediaRecorder.state !== 'recording') {
       return null;
