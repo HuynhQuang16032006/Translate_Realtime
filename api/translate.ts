@@ -178,14 +178,14 @@ Nhiệm vụ:
 }`;
 
     const candidateModels = [
-      'gemini-3.5-flash-lite',
+      'gemini-2.5-flash',
+      'gemini-2.5-flash-lite',
       'gemini-3.5-flash',
-      'gemini-3.8-flash',
       'gemini-flash-latest',
     ];
 
     const mimeCandidates = cleanMimeType === 'audio/mp4'
-      ? ['audio/mp4', 'audio/m4a', 'audio/aac']
+      ? ['audio/mp4', 'audio/aac']
       : [cleanMimeType];
 
     let responseJsonText = '';
@@ -201,7 +201,7 @@ Nhiệm vụ:
           };
           if (modelName === 'gemini-3.8-flash') {
             generationConfig.thinking_config = { thinking_level: 'LOW' };
-          } else if (modelName.includes('3.5')) {
+          } else if (modelName === 'gemini-3.5-flash') {
             generationConfig.thinking_config = { thinking_level: 'minimal' };
           }
 

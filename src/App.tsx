@@ -184,7 +184,8 @@ export const App: React.FC = () => {
   // ensuring 100% immunity to Great Firewall blocks even on Chinese domestic WiFi!
   const processAndTranslateAudio = async (
     recordResult: AudioRecordResult | null,
-    clientTranscript?: string
+    clientTranscript?: string,
+    shouldReview: boolean = false
   ) => {
     setIsProcessing(true);
     try {
@@ -222,6 +223,12 @@ export const App: React.FC = () => {
       const hasOriginalText = !!data.original_text?.trim();
       if (!hasOriginalText) {
         showErrorToast('AI không nghe rõ câu nói hoặc chỉ có tiếng ồn. Vui lòng nói to và rõ hơn.');
+        return;
+      }
+
+      // If review is requested (user wants to verify accuracy before sending to chat)
+      if (shouldReview) {
+        setReviewText(data.original_text);
         return;
       }
 
@@ -462,14 +469,16 @@ export const App: React.FC = () => {
       // Speech recognition captured real-time text!
       if (instantSend) {
         setReviewText('');
-        await processAndTranslateAudio(null, recognizedText);
+        await processAndTranslateAudio(null, recognizedText, false);
       } else {
         setReviewText(recognizedText);
         mqttServiceRef.current?.broadcastUnlock();
       }
     } else if (recordResult && recordResult.audioBase64) {
-      // Audio was recorded; send to Gemini 3.5 Flash for transcription and translation!
-      await processAndTranslateAudio(recordResult, '');
+      // Audio was recorded:
+      // If instantSend is false, show Review Card so user can verify accuracy before sending!
+      // If instantSend is true, send directly to chat.
+      await processAndTranslateAudio(recordResult, '', !instantSend);
     } else {
       showErrorToast('Chưa nghe rõ câu nói. Hãy bấm và nói to hơn hoặc gõ trực tiếp vào ô nhắn tin.');
       mqttServiceRef.current?.broadcastUnlock();
@@ -479,7 +488,7 @@ export const App: React.FC = () => {
   // Confirm review and translate
   const handleConfirmReview = async (text: string) => {
     setReviewText('');
-    await processAndTranslateAudio(null, text.trim());
+    await processAndTranslateAudio(null, text.trim(), false);
   };
 
   const handleDismissReview = () => {
