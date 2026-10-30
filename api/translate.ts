@@ -178,10 +178,13 @@ Nhiệm vụ:
 }`;
 
     const candidateModels = [
-      'gemini-2.5-flash',
-      'gemini-2.5-flash-lite',
+      'gemini-3.8-flash',
+      'gemini-3.5-flash-lite',
+      'gemini-3.5-transcribe',
+      'gemini-3.7-flash',
+      'gemini-3.6-flash',
       'gemini-3.5-flash',
-      'gemini-flash-latest',
+      'gemini-flash-lite-latest',
     ];
 
     const mimeCandidates = cleanMimeType === 'audio/mp4'
@@ -200,9 +203,7 @@ Nhiệm vụ:
             temperature: 0.1,
           };
           if (modelName === 'gemini-3.8-flash') {
-            generationConfig.thinking_config = { thinking_level: 'LOW' };
-          } else if (modelName === 'gemini-3.5-flash') {
-            generationConfig.thinking_config = { thinking_level: 'minimal' };
+            generationConfig.thinking_config = { thinking_level: 'low' };
           }
 
           const payload = {
