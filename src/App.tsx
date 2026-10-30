@@ -357,10 +357,9 @@ export const App: React.FC = () => {
         (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1));
 
     // 2. Start Web Speech Recognition synchronously within user gesture for live text on screen
-    let speechRecognitionActive = false;
     if (speechRecognitionHelper.isSupported()) {
       try {
-        speechRecognitionActive = speechRecognitionHelper.start(userRef.current.lang);
+        speechRecognitionHelper.start(userRef.current.lang);
       } catch (e) {
         console.warn('SpeechRecognition start failed:', e);
       }
@@ -397,32 +396,40 @@ export const App: React.FC = () => {
       }
       try {
         const audioConstraints = isIOS
-          ? { echoCancellation: true }
+          ? true
           : {
               echoCancellation: true,
               noiseSuppression: true,
               autoGainControl: true,
             };
 
-        stream = await navigator.mediaDevices.getUserMedia({ audio: audioConstraints });
-        mediaStreamRef.current = stream;
-      } catch (e) {
-        console.warn('Lỗi mở Micro:', e);
-        if (!speechRecognitionActive) {
-          showErrorToast('Vui lòng cấp quyền Micro trong trình duyệt để thu âm.');
-          speechRecognitionHelper.stop().catch(() => '');
-          mqttServiceRef.current?.broadcastUnlock();
-          return;
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({ audio: audioConstraints });
+        } catch (constraintErr) {
+          // Fallback without constraints for picky browsers
+          stream = await navigator.mediaDevices.getUserMedia({ audio: true });
         }
+        mediaStreamRef.current = stream;
+      } catch (e: any) {
+        console.warn('Lỗi mở Micro:', e);
+        showErrorToast('Vui lòng cấp quyền Micro trong Safari: Bấm vào biểu tượng bên trái thanh địa chỉ web (aA hoặc ☰) > Cài đặt trang web > Micrô: Cho phép.');
+        speechRecognitionHelper.stop().catch(() => '');
+        mqttServiceRef.current?.broadcastUnlock();
+        return;
       }
     }
 
-    if (stream) {
-      try {
-        audioRecorderRef.current.start(stream);
-      } catch (e) {
-        console.warn('Audio recorder start failed:', e);
-      }
+    if (!stream) {
+      showErrorToast('Không thể kích hoạt Micro. Hãy thử làm mới trang hoặc kiểm tra quyền Safari.');
+      speechRecognitionHelper.stop().catch(() => '');
+      mqttServiceRef.current?.broadcastUnlock();
+      return;
+    }
+
+    try {
+      audioRecorderRef.current.start(stream);
+    } catch (e) {
+      console.warn('Audio recorder start failed:', e);
     }
 
     setIsRecording(true);

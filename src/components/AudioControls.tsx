@@ -39,6 +39,7 @@ export const AudioControls: React.FC<AudioControlsProps> = ({
   const [inputText, setInputText] = useState('');
   const [editableReviewText, setEditableReviewText] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
+  const touchStartTimeRef = useRef<number>(0);
 
   // Sync reviewText into editable field whenever new reviewText arrives
   useEffect(() => {
@@ -311,6 +312,17 @@ export const AudioControls: React.FC<AudioControlsProps> = ({
           {/* Big Voice Button (PTT) */}
           <button
             disabled={isLockedByOther || isProcessing}
+            onTouchStart={() => {
+              touchStartTimeRef.current = Date.now();
+            }}
+            onTouchEnd={(e) => {
+              const elapsed = Date.now() - touchStartTimeRef.current;
+              // If held for more than 500ms, user treated this as hold-to-speak: stop on release
+              if (elapsed > 500 && isRecording) {
+                e.preventDefault();
+                onStopManualRecord(false);
+              }
+            }}
             onClick={() => {
               if (isRecording) {
                 onStopManualRecord(false);

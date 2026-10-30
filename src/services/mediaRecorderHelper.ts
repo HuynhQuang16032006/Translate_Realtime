@@ -68,17 +68,13 @@ export class CrossBrowserAudioRecorder {
       }
     };
 
-    // On iOS Safari, passing a timeslice (e.g. 250) to start() causes audio corruption or silence in WebKit
     const isIOS =
       typeof navigator !== 'undefined' &&
       (/iPad|iPhone|iPod/.test(navigator.userAgent) ||
         (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1));
 
-    if (isIOS) {
-      this.mediaRecorder.start();
-    } else {
-      this.mediaRecorder.start(250);
-    }
+    // Use 500ms timeslice on iOS Safari and 250ms on desktop to force periodic chunk delivery
+    this.mediaRecorder.start(isIOS ? 500 : 250);
   }
 
   public isRecording(): boolean {
@@ -98,7 +94,13 @@ export class CrossBrowserAudioRecorder {
       }
 
       this.mediaRecorder.onstop = async () => {
+        // Asynchronous WebKit flush: give Safari up to 200ms to deliver final ondataavailable event
         if (this.recordedChunks.length === 0) {
+          await new Promise((r) => setTimeout(r, 200));
+        }
+
+        if (this.recordedChunks.length === 0) {
+          console.warn('MediaRecorder stopped with 0 chunks collected.');
           resolve(null);
           return;
         }
@@ -106,8 +108,9 @@ export class CrossBrowserAudioRecorder {
         const mime = this.selectedMimeType || this.mediaRecorder?.mimeType || 'audio/webm';
         const audioBlob = new Blob(this.recordedChunks, { type: mime });
 
-        // Discard only if audio is practically empty (under 150ms or under 80 bytes)
-        if (durationMs < 150 || audioBlob.size < 80) {
+        // Discard only if practically empty (under 100ms or under 50 bytes)
+        if (durationMs < 100 || audioBlob.size < 50) {
+          console.warn('Audio blob discarded: too short or empty.', { durationMs, size: audioBlob.size });
           resolve(null);
           return;
         }

@@ -52,7 +52,7 @@ export const translations = {
 
     // Chat Feed
     chat_empty_title: 'Phòng phiên dịch đã sẵn sàng',
-    chat_empty_desc: 'Bấm giữ nút Micro để nói hoặc đưa máy sát miệng. Hệ thống sẽ tự động dịch và phát âm thanh đến tất cả các máy trong phòng.',
+    chat_empty_desc: 'Bấm nút "Bấm để nói" ở dưới để bắt đầu nói, nói xong bấm "Dừng & dịch" để gửi bản dịch.',
     chat_empty_tip: '💡 Mẹo nhanh: Bấm nút "Mã QR" góc trên để các thành viên khác quét mã tham gia ngay lập tức.',
     chat_you: 'Bạn',
     chat_original_prefix: 'Gốc:',
@@ -199,7 +199,7 @@ export const translations = {
 
     // Chat Feed
     chat_empty_title: '现场同传房间已就绪',
-    chat_empty_desc: '按住或点击下方麦克风发言。系统将瞬间完成翻译并向房间所有设备自动朗读译文。',
+    chat_empty_desc: '点击下方“点击说话”按钮开始发言，讲完后点击“停止并翻译”即可瞬间完成翻译。',
     chat_empty_tip: '💡 快捷提示：点击右上角【邀请码】让现场同伴扫码直接加入。',
     chat_you: '您',
     chat_original_prefix: '原文:',
@@ -346,7 +346,7 @@ export const translations = {
 
     // Chat Feed
     chat_empty_title: 'Translation Room is Ready',
-    chat_empty_desc: 'Hold or tap the mic button below to talk. Translations will be instantly broadcast and spoken out loud to all devices in the room.',
+    chat_empty_desc: 'Tap "Click to Speak" below to start talking, then tap "Stop & Translate" when finished.',
     chat_empty_tip: '💡 Pro Tip: Tap "QR Invite" at the top to let nearby partners scan and join in seconds.',
     chat_you: 'You',
     chat_original_prefix: 'Original:',
