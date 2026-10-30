@@ -161,9 +161,10 @@ Nhiệm vụ:
 1. Lắng nghe tệp âm thanh (ngôn ngữ dự kiến: ${speakerLang || 'vi, zh, hoặc en'}).
 2. Nhận diện chính xác ngôn ngữ được nói (vi: Tiếng Việt, zh: Tiếng Trung Giản thể, en: Tiếng Anh).
 3. Dịch chuẩn xác sang cả 3 ngôn ngữ: Tiếng Việt (vi), Tiếng Trung (zh) và Tiếng Anh (en).
-4. QUY TẮC:
-   - Nếu có tiếng người nói, đặt "is_noise_or_empty": false.
-   - CHỈ đặt "is_noise_or_empty": true nếu đoạn âm thanh hoàn toàn im lặng hoặc tiếng gõ kim loại vô nghĩa.
+4. QUY TẮC BẮT BUỘC:
+   - Hãy cố gắng nhận diện mọi câu nói của người dùng, kể cả từ ngắn, câu chào hỏi ("alo", "xin chào", "hello", "ok", "được rồi", "tôi muốn hỏi", số đếm...).
+   - Nếu có BẤT KỲ tiếng người nói hoặc từ ngữ nào, LUÔN LUÔN ghi lại vào "original_text" và đặt "is_noise_or_empty": false.
+   - CHỈ ĐƯỢC đặt "is_noise_or_empty": true khi đoạn ghi âm là 100% im lặng tuyệt đối, không có bất kỳ âm thanh hay từ ngữ nào của con người.
 5. Định dạng JSON BẮT BUỘC:
 {
   "is_noise_or_empty": false,

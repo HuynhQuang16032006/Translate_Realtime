@@ -66,12 +66,8 @@ export class SpeechRecognitionService {
     try {
       const recognition = new SpeechRecognition();
 
-      const isMobile =
-        typeof navigator !== 'undefined' &&
-        /iPhone|iPad|iPod|Android|Mobile/i.test(navigator.userAgent);
-
-      // On iOS Safari & Mobile browsers, continuous must be false to stream real-time interim results as words are spoken
-      recognition.continuous = !isMobile;
+      // Continuous listening is essential for real-time word streaming as the user speaks
+      recognition.continuous = true;
       recognition.interimResults = true;
       recognition.maxAlternatives = 1;
 
@@ -83,19 +79,23 @@ export class SpeechRecognitionService {
       recognition.lang = langMap[this.currentLang] || 'vi-VN';
 
       recognition.onresult = (event: any) => {
+        let finalStr = '';
         let interimStr = '';
-        for (let i = event.resultIndex || 0; i < event.results.length; ++i) {
+
+        for (let i = 0; i < event.results.length; ++i) {
           const item = event.results[i];
           if (!item || !item[0]) continue;
-          const transcript = item[0].transcript || '';
+          const transcript = (item[0].transcript || '').trim();
+          if (!transcript) continue;
+
           if (item.isFinal) {
-            this.accumulatedTranscript = (this.accumulatedTranscript + ' ' + transcript).trim();
+            finalStr += (finalStr ? ' ' : '') + transcript;
           } else {
-            interimStr += transcript;
+            interimStr += (interimStr ? ' ' : '') + transcript;
           }
         }
 
-        const full = (this.accumulatedTranscript + ' ' + interimStr).trim();
+        const full = (finalStr + (interimStr ? ' ' + interimStr : '')).trim();
         if (full) {
           this.currentTranscript = full;
           if (this.onUpdateCallback) {
@@ -120,22 +120,34 @@ export class SpeechRecognitionService {
         if (this.isListening && !fatalErrors.includes(error)) {
           setTimeout(() => {
             if (this.isListening) {
-              this.destroyCurrentSession();
-              this.initAndStart();
+              try {
+                this.destroyCurrentSession();
+                this.initAndStart();
+              } catch (e) {
+                // Ignore
+              }
             }
-          }, 300);
+          }, 200);
         }
       };
 
       recognition.onend = () => {
-        // Seamless auto-restart with a fresh instance on mobile phrase boundary if still listening
+        // Seamless auto-restart if still listening and not ended by user
         if (this.isListening) {
-          setTimeout(() => {
-            if (this.isListening) {
-              this.destroyCurrentSession();
-              this.initAndStart();
-            }
-          }, 150);
+          try {
+            recognition.start();
+          } catch (e) {
+            setTimeout(() => {
+              if (this.isListening) {
+                try {
+                  this.destroyCurrentSession();
+                  this.initAndStart();
+                } catch (err) {
+                  // Fallback
+                }
+              }
+            }, 100);
+          }
         }
       };
 
@@ -161,12 +173,12 @@ export class SpeechRecognitionService {
       }
     }
 
-    const text = this.currentTranscript.trim() || this.accumulatedTranscript.trim();
+    const text = (this.currentTranscript || this.accumulatedTranscript).trim();
     return Promise.resolve(text);
   }
 
   public getCurrentTranscript(): string {
-    return (this.currentTranscript.trim() || this.accumulatedTranscript.trim());
+    return (this.currentTranscript || this.accumulatedTranscript).trim();
   }
 
   public reset(): void {

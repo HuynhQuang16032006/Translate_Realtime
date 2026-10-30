@@ -219,7 +219,8 @@ export const App: React.FC = () => {
       const data = await response.json();
 
       // If audio was just background noise or empty
-      if (data.is_noise_or_empty || !data.original_text?.trim()) {
+      const hasOriginalText = !!data.original_text?.trim();
+      if (!hasOriginalText) {
         showErrorToast('AI không nghe rõ câu nói hoặc chỉ có tiếng ồn. Vui lòng nói to và rõ hơn.');
         return;
       }
@@ -274,10 +275,28 @@ export const App: React.FC = () => {
     // Keep screen awake (iOS Safari / Android)
     wakeLockService.requestLock();
 
-    // 1. Initialize Audio Recorder instance (without locking microphone hardware)
+    // 1. Initialize Audio Recorder instance
     audioRecorderRef.current = new CrossBrowserAudioRecorder();
 
-    // 4. Initialize MQTT Realtime Service
+    // 2. Pre-warm microphone hardware so subsequent voice recordings start in 0ms without clipping
+    if (navigator.mediaDevices?.getUserMedia) {
+      navigator.mediaDevices
+        .getUserMedia({
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+          },
+        })
+        .then((stream) => {
+          mediaStreamRef.current = stream;
+        })
+        .catch((err) => {
+          console.warn('Microphone permission deferred or denied on join:', err);
+        });
+    }
+
+    // 3. Initialize MQTT Realtime Service
     const mqttService = new MqttSyncService({
       roomId: room,
       peerId,
@@ -319,55 +338,76 @@ export const App: React.FC = () => {
     if (isRecording || isProcessing) return;
     if (lockState.isLocked && lockState.lockedBy !== user.id) return;
 
-    // Unlock audio autoplay on user touch gesture
+    // 1. Immediately stop any active TTS playback so it doesn't conflict with mic
+    speechService.stop();
+    setSpeakingMessageId(null);
+    isSpeakingTtsRef.current = false;
+
+    // 2. Unlock audio autoplay on user touch gesture
     speechService.unlockMobileAudio();
 
+    // 3. SYNCHRONOUSLY START SPEECH RECOGNITION (Directly within user gesture tick!)
+    // Critical for iOS Safari: SpeechRecognition.start() MUST be executed inside the direct user-gesture event tick
+    let speechRecognitionActive = false;
+    if (speechRecognitionHelper.isSupported()) {
+      try {
+        speechRecognitionActive = speechRecognitionHelper.start(userRef.current.lang);
+      } catch (e) {
+        console.warn('SpeechRecognition start failed:', e);
+      }
+    }
+
     const acquired = mqttServiceRef.current?.broadcastLock();
-    if (!acquired) return;
+    if (!acquired) {
+      speechRecognitionHelper.stop().catch(() => '');
+      return;
+    }
 
     setReviewText('');
     setLiveTranscript('');
     setIsRecording(true);
 
-    // 1. Ensure AudioRecorder is initialized
-    if (!audioRecorderRef.current) {
-      audioRecorderRef.current = new CrossBrowserAudioRecorder();
-    }
+    const isIOS =
+      typeof navigator !== 'undefined' &&
+      (/iPad|iPhone|iPod/.test(navigator.userAgent) ||
+        (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1));
 
-    // 2. Ensure active media stream for MediaRecorder (Guarantees we never lose the audio recording!)
-    let stream = mediaStreamRef.current;
-    if (!stream || !stream.active || stream.getAudioTracks().every((t) => t.readyState === 'ended')) {
-      try {
-        stream = await navigator.mediaDevices.getUserMedia({
-          audio: {
-            echoCancellation: true,
-            noiseSuppression: true,
-            autoGainControl: true,
-          },
-        });
-        mediaStreamRef.current = stream;
-      } catch (e) {
-        console.warn('Lỗi mở Micro:', e);
-        showErrorToast('Vui lòng cấp quyền Micro trong trình duyệt để đàm thoại.');
-        setIsRecording(false);
-        mqttServiceRef.current?.broadcastUnlock();
-        return;
+    // On iOS Safari: If SpeechRecognition is active, avoid running MediaRecorder concurrently
+    // because iOS WebKit has a known audio hardware collision where getUserMedia blocks SpeechRecognition.
+    // On Android/PC or if SpeechRecognition is not active, start MediaRecorder as guaranteed capture.
+    if (!isIOS || !speechRecognitionActive) {
+      if (!audioRecorderRef.current) {
+        audioRecorderRef.current = new CrossBrowserAudioRecorder();
       }
-    }
 
-    // 3. Start MediaRecorder (Guaranteed audio capture on all mobile browsers)
-    try {
-      audioRecorderRef.current.start(stream);
-    } catch (e) {
-      console.warn('Audio recorder start failed:', e);
-    }
+      let stream = mediaStreamRef.current;
+      if (!stream || !stream.active || stream.getAudioTracks().every((t) => t.readyState === 'ended')) {
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({
+            audio: {
+              echoCancellation: true,
+              noiseSuppression: true,
+              autoGainControl: true,
+            },
+          });
+          mediaStreamRef.current = stream;
+        } catch (e) {
+          console.warn('Lỗi mở Micro:', e);
+          if (!speechRecognitionActive) {
+            showErrorToast('Vui lòng cấp quyền Micro trong trình duyệt để đàm thoại.');
+            setIsRecording(false);
+            mqttServiceRef.current?.broadcastUnlock();
+            return;
+          }
+        }
+      }
 
-    // 4. Also start SpeechRecognition in parallel if supported (for live text preview on screen)
-    if (speechRecognitionHelper.isSupported()) {
-      try {
-        speechRecognitionHelper.start(userRef.current.lang);
-      } catch (e) {
-        console.warn('SpeechRecognition start failed:', e);
+      if (stream && stream.active) {
+        try {
+          audioRecorderRef.current.start(stream);
+        } catch (e) {
+          console.warn('Audio recorder start failed:', e);
+        }
       }
     }
   };
@@ -387,11 +427,20 @@ export const App: React.FC = () => {
 
     // Stop both in parallel
     const [recordResult, clientTranscript] = await Promise.all([
-      audioRecorderRef.current ? audioRecorderRef.current.stop().catch(() => null) : Promise.resolve(null),
-      speechRecognitionHelper.isSupported() ? speechRecognitionHelper.stop().catch(() => '') : Promise.resolve(''),
+      audioRecorderRef.current && audioRecorderRef.current.isRecording()
+        ? audioRecorderRef.current.stop().catch(() => null)
+        : Promise.resolve(null),
+      speechRecognitionHelper.isSupported()
+        ? speechRecognitionHelper.stop().catch(() => '')
+        : Promise.resolve(''),
     ]);
 
-    const recognizedText = (clientTranscript || speechRecognitionHelper.getCurrentTranscript() || liveTranscript || '').trim();
+    const recognizedText = (
+      clientTranscript ||
+      speechRecognitionHelper.getCurrentTranscript() ||
+      liveTranscript ||
+      ''
+    ).trim();
 
     if (recognizedText) {
       // Speech recognition captured real-time text!
