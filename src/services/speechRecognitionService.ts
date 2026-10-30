@@ -5,7 +5,9 @@ export class SpeechRecognitionService {
   private currentTranscript: string = '';
   private accumulatedTranscript: string = '';
   private isListening: boolean = false;
+  private currentLang: Language = 'vi';
   private onUpdateCallback: ((text: string) => void) | null = null;
+  private onErrorCallback: ((error: string) => void) | null = null;
 
   public isSupported(): boolean {
     if (typeof window === 'undefined') return false;
@@ -14,6 +16,10 @@ export class SpeechRecognitionService {
 
   public setUpdateCallback(cb: ((text: string) => void) | null) {
     this.onUpdateCallback = cb;
+  }
+
+  public setErrorCallback(cb: ((error: string) => void) | null) {
+    this.onErrorCallback = cb;
   }
 
   public start(lang: Language): boolean {
@@ -26,24 +32,42 @@ export class SpeechRecognitionService {
       return false;
     }
 
+    this.currentLang = lang;
     this.currentTranscript = '';
     this.accumulatedTranscript = '';
     this.isListening = true;
 
-    try {
-      if (this.recognition) {
-        try {
-          this.recognition.abort();
-        } catch (e) {
-          // Ignore
-        }
-      }
+    // Clean up previous instance cleanly
+    this.destroyCurrentSession();
 
-      const isMobile = typeof navigator !== 'undefined' && /iPhone|iPad|iPod|Android|Mobile/i.test(navigator.userAgent);
+    return this.initAndStart();
+  }
+
+  private destroyCurrentSession(): void {
+    if (this.recognition) {
+      try {
+        this.recognition.onresult = null;
+        this.recognition.onerror = null;
+        this.recognition.onend = null;
+        this.recognition.abort();
+      } catch (e) {
+        // Ignore
+      }
+      this.recognition = null;
+    }
+  }
+
+  private initAndStart(): boolean {
+    if (!this.isListening || typeof window === 'undefined') return false;
+    const SpeechRecognition =
+      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognition) return false;
+
+    try {
       const recognition = new SpeechRecognition();
 
-      // Mobile Safari and Android Chromium stream interim results much faster when continuous is false
-      recognition.continuous = !isMobile;
+      // Continuous mode keeps session active while user is speaking
+      recognition.continuous = true;
       recognition.interimResults = true;
       recognition.maxAlternatives = 1;
 
@@ -52,7 +76,7 @@ export class SpeechRecognitionService {
         zh: 'zh-CN',
         en: 'en-US',
       };
-      recognition.lang = langMap[lang] || 'vi-VN';
+      recognition.lang = langMap[this.currentLang] || 'vi-VN';
 
       recognition.onresult = (event: any) => {
         let interimStr = '';
@@ -82,26 +106,32 @@ export class SpeechRecognitionService {
         if (error === 'no-speech') {
           return;
         }
-        const nonRetryErrors = ['not-allowed', 'audio-capture', 'service-not-allowed'];
-        if (this.isListening && !nonRetryErrors.includes(error)) {
+
+        if (this.onErrorCallback) {
+          this.onErrorCallback(error);
+        }
+
+        // On non-fatal network hiccups, attempt fresh reconnection if user is still holding recording
+        const fatalErrors = ['not-allowed', 'service-not-allowed', 'audio-capture'];
+        if (this.isListening && !fatalErrors.includes(error)) {
           setTimeout(() => {
             if (this.isListening) {
-              try {
-                recognition.start();
-              } catch (e) {}
+              this.destroyCurrentSession();
+              this.initAndStart();
             }
-          }, 200);
+          }, 300);
         }
       };
 
       recognition.onend = () => {
-        // Seamless auto-restart on mobile phrase boundaries while user is still holding PTT
+        // Seamless auto-restart with a fresh instance on mobile phrase boundary if still listening
         if (this.isListening) {
-          try {
-            recognition.start();
-          } catch (e) {
-            // Ignore
-          }
+          setTimeout(() => {
+            if (this.isListening) {
+              this.destroyCurrentSession();
+              this.initAndStart();
+            }
+          }, 150);
         }
       };
 
@@ -110,6 +140,9 @@ export class SpeechRecognitionService {
       return true;
     } catch (err) {
       console.warn('Lỗi khởi động SpeechRecognition:', err);
+      if (this.onErrorCallback) {
+        this.onErrorCallback(String(err));
+      }
       return false;
     }
   }
@@ -124,13 +157,19 @@ export class SpeechRecognitionService {
       }
     }
 
-    // Return current captured transcript immediately
     const text = this.currentTranscript.trim() || this.accumulatedTranscript.trim();
     return Promise.resolve(text);
   }
 
   public getCurrentTranscript(): string {
     return (this.currentTranscript.trim() || this.accumulatedTranscript.trim());
+  }
+
+  public reset(): void {
+    this.isListening = false;
+    this.destroyCurrentSession();
+    this.currentTranscript = '';
+    this.accumulatedTranscript = '';
   }
 }
 

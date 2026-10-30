@@ -86,6 +86,11 @@ export const translations = {
     audio_stop_and_translate_sec: '{sec}s • Dừng & Dịch',
     audio_mic_busy: 'Đang bận',
     audio_vad_sensitivity_tooltip: 'Độ nhạy Micro VAD ({db} dB)',
+    audio_confirm_title: 'Xác nhận nội dung vừa thu:',
+    audio_confirm_send: 'Dịch & Gửi ngay',
+    audio_confirm_edit: 'Chỉnh sửa',
+    audio_confirm_cancel: 'Hủy bỏ',
+    audio_direct_send: 'Gửi tức thì',
 
     // QR Modal
     qr_title: 'Mã QR Tham gia Phòng',
@@ -228,6 +233,11 @@ export const translations = {
     audio_stop_and_translate_sec: '{sec}秒 • 停止并翻译',
     audio_mic_busy: '占用中',
     audio_vad_sensitivity_tooltip: 'VAD 麦克风灵敏度 ({db} dB)',
+    audio_confirm_title: '确认刚才识别的内容：',
+    audio_confirm_send: '立即翻译并发送',
+    audio_confirm_edit: '修改文字',
+    audio_confirm_cancel: '取消',
+    audio_direct_send: '即时发送',
 
     // QR Modal
     qr_title: '扫码加入现场同传房间',
@@ -370,6 +380,11 @@ export const translations = {
     audio_stop_and_translate_sec: '{sec}s • Stop & Translate',
     audio_mic_busy: 'Busy',
     audio_vad_sensitivity_tooltip: 'VAD Mic Sensitivity ({db} dB)',
+    audio_confirm_title: 'Confirm recognized speech:',
+    audio_confirm_send: 'Translate & Send Now',
+    audio_confirm_edit: 'Edit Text',
+    audio_confirm_cancel: 'Cancel',
+    audio_direct_send: 'Instant Send',
 
     // QR Modal
     qr_title: 'Scan QR to Join Room',

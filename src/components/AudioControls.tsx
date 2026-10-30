@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Mic, MicOff, Square, Send, X, Edit3, Radio } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Mic, MicOff, Square, Send, X, Edit3, Radio, Check, ArrowRight } from 'lucide-react';
 import type { Language, RoomLockState } from '../types';
 import { t } from '../locales/i18n';
 
@@ -10,10 +10,13 @@ interface AudioControlsProps {
   currentUserId: string;
   currentLang: Language;
   onStartManualRecord: () => void;
-  onStopManualRecord: () => void;
+  onStopManualRecord: (instantSend?: boolean) => void;
   onCancelRecord?: () => void;
   onSendText: (text: string) => void;
   liveTranscript?: string;
+  reviewText?: string;
+  onConfirmSend?: (text: string) => void;
+  onDismissReview?: () => void;
 }
 
 export const AudioControls: React.FC<AudioControlsProps> = ({
@@ -26,12 +29,25 @@ export const AudioControls: React.FC<AudioControlsProps> = ({
   onStopManualRecord,
   onCancelRecord,
   onSendText,
-  liveTranscript,
+  liveTranscript = '',
+  reviewText = '',
+  onConfirmSend,
+  onDismissReview,
 }) => {
   const isLockedByOther = lockState.isLocked && lockState.lockedBy !== currentUserId;
   const [recordDuration, setRecordDuration] = useState(0);
   const [inputText, setInputText] = useState('');
+  const [editableReviewText, setEditableReviewText] = useState('');
+  const inputRef = useRef<HTMLInputElement>(null);
 
+  // Sync reviewText into editable field whenever new reviewText arrives
+  useEffect(() => {
+    if (reviewText) {
+      setEditableReviewText(reviewText);
+    }
+  }, [reviewText]);
+
+  // Duration timer while recording
   useEffect(() => {
     let interval: any = null;
     if (isRecording) {
@@ -59,21 +75,33 @@ export const AudioControls: React.FC<AudioControlsProps> = ({
     }
   };
 
-  const handleEditLiveTranscript = () => {
-    if (liveTranscript) {
-      setInputText(liveTranscript);
-      onCancelRecord?.();
+  const handleEditInInput = (textToEdit: string) => {
+    setInputText(textToEdit);
+    onDismissReview?.();
+    onCancelRecord?.();
+    setTimeout(() => {
+      inputRef.current?.focus();
+    }, 100);
+  };
+
+  const handleConfirmReviewSend = () => {
+    const finalToSend = editableReviewText.trim() || reviewText.trim();
+    if (!finalToSend || isProcessing) return;
+    if (onConfirmSend) {
+      onConfirmSend(finalToSend);
+    } else {
+      onSendText(finalToSend);
     }
   };
 
   return (
     <div className="bg-slate-900/95 border-t border-slate-800 safe-bottom px-3 sm:px-4 py-3">
       <div className="max-w-3xl mx-auto space-y-2.5">
-        {/* Live Speech Recognition Multi-Line Card (High visibility on mobile) */}
+        {/* STATE 1: LIVE RECORDING IN PROGRESS CARD */}
         {isRecording && (
-          <div className="w-full bg-slate-900/95 border-2 border-rose-500/70 rounded-2xl p-3 shadow-2xl shadow-rose-950/60 backdrop-blur-md animate-in slide-in-from-bottom-2 duration-200">
-            {/* Card Top: Status & Duration & Audio Visualizer */}
-            <div className="flex items-center justify-between pb-2 mb-2 border-b border-slate-800 text-xs">
+          <div className="w-full bg-gradient-to-br from-slate-900 to-slate-950 border-2 border-rose-500 rounded-2xl p-3.5 shadow-2xl shadow-rose-950/70 backdrop-blur-md animate-in slide-in-from-bottom-2 duration-200">
+            {/* Header */}
+            <div className="flex items-center justify-between pb-2 mb-2 border-b border-slate-800/80 text-xs">
               <div className="flex items-center gap-2">
                 <span className="relative flex h-3 w-3">
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75" />
@@ -87,8 +115,8 @@ export const AudioControls: React.FC<AudioControlsProps> = ({
                 </span>
               </div>
 
-              {/* Visualizer audio wave bars */}
-              <div className="flex items-center gap-1">
+              {/* Pulsing Voice Waveform */}
+              <div className="flex items-center gap-1 px-2 py-0.5 bg-rose-950/40 rounded-full border border-rose-500/20">
                 <div className="w-1 h-3 bg-rose-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
                 <div className="w-1 h-5 bg-rose-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
                 <div className="w-1 h-2 bg-rose-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
@@ -107,29 +135,32 @@ export const AudioControls: React.FC<AudioControlsProps> = ({
               )}
             </div>
 
-            {/* Card Center: Large Multi-line Text Box */}
-            <div className="min-h-[52px] max-h-32 overflow-y-auto p-2.5 bg-slate-950/80 rounded-xl border border-slate-800/80 text-sm sm:text-base leading-relaxed break-words select-text">
-              {liveTranscript ? (
-                <span className="text-white font-medium">"{liveTranscript}"</span>
+            {/* Real-time Streaming Transcript Box */}
+            <div className="min-h-[64px] max-h-36 overflow-y-auto p-3 bg-slate-950 rounded-xl border border-rose-500/30 text-sm sm:text-base leading-relaxed break-words select-text">
+              {liveTranscript.trim() ? (
+                <div className="text-white font-medium flex items-start gap-2">
+                  <span className="text-emerald-400 shrink-0 mt-0.5">💬</span>
+                  <span className="text-slate-100">{liveTranscript}</span>
+                </div>
               ) : (
-                <div className="flex items-center gap-2 text-slate-400 italic text-xs py-1">
+                <div className="flex items-center gap-2 text-slate-400 italic text-xs sm:text-sm py-2">
                   <Radio className="w-4 h-4 text-rose-400 animate-pulse shrink-0" />
                   <span>{t('audio_listening', currentLang)}</span>
                 </div>
               )}
             </div>
 
-            {/* Card Bottom Actions: Edit, Cancel, or Immediate Stop & Translate */}
-            <div className="flex items-center justify-between pt-2.5 mt-1">
+            {/* Bottom Actions During Recording */}
+            <div className="flex items-center justify-between pt-3 mt-1 gap-2 flex-wrap sm:flex-nowrap">
               <div className="flex items-center gap-2">
-                {liveTranscript && (
+                {liveTranscript.trim() && (
                   <button
                     type="button"
-                    onClick={handleEditLiveTranscript}
+                    onClick={() => handleEditInInput(liveTranscript)}
                     title={t('audio_edit_tooltip', currentLang)}
-                    className="px-2.5 py-1 bg-blue-600/30 hover:bg-blue-600 border border-blue-500/40 text-blue-200 hover:text-white rounded-xl text-xs font-medium transition flex items-center gap-1.5"
+                    className="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-medium transition flex items-center gap-1.5"
                   >
-                    <Edit3 className="w-3.5 h-3.5" />
+                    <Edit3 className="w-3.5 h-3.5 text-blue-400" />
                     <span>{t('audio_edit_btn', currentLang)}</span>
                   </button>
                 )}
@@ -137,20 +168,106 @@ export const AudioControls: React.FC<AudioControlsProps> = ({
                   <button
                     type="button"
                     onClick={onCancelRecord}
-                    className="px-2.5 py-1 bg-slate-800 hover:bg-rose-900/50 text-slate-400 hover:text-rose-200 rounded-xl text-xs font-medium transition"
+                    className="px-2.5 py-1.5 bg-slate-800/80 hover:bg-rose-900/40 text-slate-400 hover:text-rose-200 rounded-xl text-xs font-medium transition"
                   >
                     {t('audio_cancel_btn', currentLang)}
                   </button>
                 )}
               </div>
 
+              <div className="flex items-center gap-2 ml-auto">
+                {/* Instant Send Shortcut */}
+                <button
+                  type="button"
+                  onClick={() => onStopManualRecord(true)}
+                  className="px-3.5 py-1.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-md shadow-blue-600/30 active:scale-95"
+                >
+                  <Send className="w-3.5 h-3.5" />
+                  <span>{t('audio_direct_send', currentLang)}</span>
+                </button>
+
+                {/* Stop & Review */}
+                <button
+                  type="button"
+                  onClick={() => onStopManualRecord(false)}
+                  className="px-3 py-1.5 bg-rose-600 hover:bg-rose-500 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-md shadow-rose-600/30 active:scale-95"
+                >
+                  <Square className="w-3 h-3 fill-current" />
+                  <span>{t('audio_stop_and_translate', currentLang)}</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* STATE 2: REVIEW & CONFIRMATION CARD (Displays after speaking so user can verify accuracy!) */}
+        {!isRecording && reviewText.trim().length > 0 && (
+          <div className="w-full bg-slate-900/95 border-2 border-emerald-500/80 rounded-2xl p-3.5 shadow-2xl shadow-emerald-950/60 backdrop-blur-md animate-in slide-in-from-bottom-2 duration-200">
+            {/* Header */}
+            <div className="flex items-center justify-between pb-2 mb-2 border-b border-slate-800 text-xs">
+              <div className="flex items-center gap-2">
+                <span className="p-1 bg-emerald-500/20 text-emerald-400 rounded-md">
+                  <Check className="w-3.5 h-3.5" />
+                </span>
+                <span className="font-bold text-emerald-400 text-xs sm:text-sm">
+                  {t('audio_confirm_title', currentLang)}
+                </span>
+              </div>
+
+              {onDismissReview && (
+                <button
+                  type="button"
+                  onClick={onDismissReview}
+                  className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              )}
+            </div>
+
+            {/* Editable Confirmation Box */}
+            <div className="relative">
+              <textarea
+                value={editableReviewText}
+                onChange={(e) => setEditableReviewText(e.target.value)}
+                rows={2}
+                placeholder="Nội dung đã nhận diện..."
+                className="w-full p-2.5 bg-slate-950 rounded-xl border border-slate-700/80 text-white text-sm sm:text-base leading-relaxed focus:outline-none focus:ring-2 focus:ring-emerald-500/60 focus:border-transparent resize-none transition select-text"
+              />
+            </div>
+
+            {/* Action Buttons: Confirm & Translate, Edit, or Cancel */}
+            <div className="flex items-center justify-between pt-2.5 mt-1 gap-2 flex-wrap sm:flex-nowrap">
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => handleEditInInput(editableReviewText)}
+                  className="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-medium transition flex items-center gap-1.5"
+                >
+                  <Edit3 className="w-3.5 h-3.5 text-blue-400" />
+                  <span>{t('audio_confirm_edit', currentLang)}</span>
+                </button>
+
+                {onDismissReview && (
+                  <button
+                    type="button"
+                    onClick={onDismissReview}
+                    className="px-2.5 py-1.5 bg-slate-800/80 hover:bg-rose-900/40 text-slate-400 hover:text-rose-200 rounded-xl text-xs font-medium transition"
+                  >
+                    {t('audio_confirm_cancel', currentLang)}
+                  </button>
+                )}
+              </div>
+
+              {/* Big Green Confirm & Translate Button */}
               <button
                 type="button"
-                onClick={onStopManualRecord}
-                className="px-3 py-1 bg-rose-600 hover:bg-rose-500 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-md shadow-rose-600/30 active:scale-95"
+                onClick={handleConfirmReviewSend}
+                disabled={isProcessing || !editableReviewText.trim()}
+                className="px-4 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-xl text-xs sm:text-sm font-bold transition flex items-center gap-2 shadow-lg shadow-emerald-600/30 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed ml-auto"
               >
-                <Square className="w-3 h-3 fill-current" />
-                <span>{t('audio_stop_and_translate', currentLang)}</span>
+                <span>{t('audio_confirm_send', currentLang)}</span>
+                <ArrowRight className="w-4 h-4" />
               </button>
             </div>
           </div>
@@ -161,6 +278,7 @@ export const AudioControls: React.FC<AudioControlsProps> = ({
           {/* Quick Text Input for Messenger-style typing */}
           <div className="flex-1 relative">
             <input
+              ref={inputRef}
               type="text"
               value={inputText}
               onChange={(e) => setInputText(e.target.value)}
@@ -188,7 +306,7 @@ export const AudioControls: React.FC<AudioControlsProps> = ({
             disabled={isLockedByOther || isProcessing}
             onClick={() => {
               if (isRecording) {
-                onStopManualRecord();
+                onStopManualRecord(false);
               } else {
                 onStartManualRecord();
               }

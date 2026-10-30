@@ -61,7 +61,7 @@ export const App: React.FC = () => {
   const popupTimerRef = useRef<any>(null);
 
   // Audio DSP & VAD Visualizer
-  const [audioLevelNormalized, setAudioLevelNormalized] = useState<number>(0);
+  const audioLevelNormalized = isRecording ? 65 : 0;
   const [thresholdNormalized, setThresholdNormalized] = useState<number>(50);
   const vadThresholdDb = -38;
 
@@ -79,6 +79,7 @@ export const App: React.FC = () => {
   const [isQrOpen, setIsQrOpen] = useState<boolean>(false);
   const [isExportOpen, setIsExportOpen] = useState<boolean>(false);
   const [liveTranscript, setLiveTranscript] = useState<string>('');
+  const [reviewText, setReviewText] = useState<string>('');
 
   useEffect(() => {
     speechRecognitionHelper.setUpdateCallback((text) => {
@@ -300,10 +301,6 @@ export const App: React.FC = () => {
     }
   };
 
-  // VAD Voice Handlers (Auto-trigger disabled for exhibition noise immunity; PTT is used)
-  const handleVoiceStart = useCallback(() => {}, []);
-  const handleVoiceEnd = useCallback(async () => {}, []);
-
   // Join Room Execution
   const handleJoinRoom = async (name: string, room: string, lang: Language) => {
     const peerId = `user_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
@@ -321,36 +318,8 @@ export const App: React.FC = () => {
     // Keep screen awake (iOS Safari / Android)
     wakeLockService.requestLock();
 
-    // 1. Initialize Microphone Stream
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true,
-        },
-      });
-      mediaStreamRef.current = stream;
-
-      // 2. Initialize Audio DSP Engine
-      const dsp = new AudioDspEngine({
-        thresholdDb: vadThresholdDb,
-        silenceTimeoutMs: 1200,
-        onVoiceStart: handleVoiceStart,
-        onVoiceEnd: handleVoiceEnd,
-        onAudioLevel: (_db, normalized) => {
-          setAudioLevelNormalized(normalized);
-        },
-      });
-      await dsp.init(stream);
-      dspEngineRef.current = dsp;
-
-      // 3. Initialize Audio Recorder
-      audioRecorderRef.current = new CrossBrowserAudioRecorder();
-    } catch (err: any) {
-      console.warn('Lỗi mở Micro:', err);
-      alert('Vui lòng cấp quyền Micro trong trình duyệt để đàm thoại.');
-    }
+    // 1. Initialize Audio Recorder instance (without locking microphone hardware)
+    audioRecorderRef.current = new CrossBrowserAudioRecorder();
 
     // 4. Initialize MQTT Realtime Service
     const mqttService = new MqttSyncService({
@@ -380,9 +349,16 @@ export const App: React.FC = () => {
   // Cancel current recording (if AI misheard before sending)
   const handleCancelRecord = () => {
     speechRecognitionHelper.stop();
-    audioRecorderRef.current?.stop();
+    if (audioRecorderRef.current?.isRecording()) {
+      audioRecorderRef.current.stop();
+    }
+    if (mediaStreamRef.current) {
+      mediaStreamRef.current.getTracks().forEach((t) => t.stop());
+      mediaStreamRef.current = null;
+    }
     setIsRecording(false);
     setLiveTranscript('');
+    setReviewText('');
     mqttServiceRef.current?.broadcastUnlock();
   };
 
@@ -397,42 +373,35 @@ export const App: React.FC = () => {
     const acquired = mqttServiceRef.current?.broadcastLock();
     if (!acquired) return;
 
+    setReviewText('');
     setLiveTranscript('');
     setIsRecording(true);
 
-    // Ensure audio recorder instance is initialized
-    if (!audioRecorderRef.current) {
-      audioRecorderRef.current = new CrossBrowserAudioRecorder();
-    }
+    const speechSupported = speechRecognitionHelper.isSupported();
 
-    // Ensure active media stream (re-request if muted or asleep on mobile browser)
-    if (
-      !mediaStreamRef.current ||
-      !mediaStreamRef.current.active ||
-      mediaStreamRef.current.getAudioTracks().every((t) => t.readyState === 'ended')
-    ) {
+    // 1. If SpeechRecognition is supported: Give it EXCLUSIVE microphone access (no MediaRecorder interference!)
+    if (speechSupported) {
+      speechRecognitionHelper.start(userRef.current.lang);
+    } else {
+      // 2. Fallback: If browser has no SpeechRecognition (e.g. WeChat in-app), use MediaRecorder
+      if (!audioRecorderRef.current) {
+        audioRecorderRef.current = new CrossBrowserAudioRecorder();
+      }
       try {
-        mediaStreamRef.current = await navigator.mediaDevices.getUserMedia({
+        const stream = await navigator.mediaDevices.getUserMedia({
           audio: {
             echoCancellation: true,
             noiseSuppression: true,
             autoGainControl: true,
           },
         });
+        mediaStreamRef.current = stream;
+        audioRecorderRef.current.start(stream);
       } catch (e) {
-        console.warn('Không thể tái kích hoạt microphone stream:', e);
-      }
-    }
-
-    // 1. Start live speech recognition for real-time text
-    speechRecognitionHelper.start(userRef.current.lang);
-
-    // 2. Start audio recorder as backup
-    if (mediaStreamRef.current && audioRecorderRef.current) {
-      try {
-        audioRecorderRef.current.start(mediaStreamRef.current);
-      } catch (e) {
-        console.warn('Audio recorder start:', e);
+        console.warn('Lỗi mở Micro:', e);
+        showErrorToast('Vui lòng cấp quyền Micro trong trình duyệt.');
+        setIsRecording(false);
+        mqttServiceRef.current?.broadcastUnlock();
       }
     }
   };
@@ -440,41 +409,63 @@ export const App: React.FC = () => {
   // Direct Text Message Send (Instant Messenger-style translation)
   const handleSendTextMessage = async (text: string) => {
     if (!text.trim() || isProcessing) return;
+    setReviewText('');
     await processAndTranslateAudio(null, text.trim());
   };
 
   // Manual Push-to-Talk (PTT) Stop
-  const handleStopManualRecord = async () => {
+  const handleStopManualRecord = async (instantSend: boolean = false) => {
     if (!isRecording) return;
 
     setIsRecording(false);
 
-    // Instant shortcut: if speech recognition already captured text while user was speaking
-    const instantTranscript = (speechRecognitionHelper.getCurrentTranscript() || liveTranscript || '').trim();
-    if (instantTranscript) {
-      speechRecognitionHelper.stop();
-      audioRecorderRef.current?.stop();
-      await processAndTranslateAudio(null, instantTranscript);
+    // 1. If SpeechRecognition was running
+    if (speechRecognitionHelper.isSupported()) {
+      const transcript = await speechRecognitionHelper.stop();
+      const textToUse = (transcript || speechRecognitionHelper.getCurrentTranscript() || liveTranscript || '').trim();
+
+      if (textToUse) {
+        if (instantSend) {
+          // Instant send mode: translate and broadcast immediately (150ms)
+          setReviewText('');
+          await processAndTranslateAudio(null, textToUse);
+        } else {
+          // Review & Confirm mode: keep text in review box so user can confirm and edit!
+          setReviewText(textToUse);
+          mqttServiceRef.current?.broadcastUnlock();
+        }
+      } else {
+        showErrorToast('Chưa nghe rõ câu nói. Hãy bấm nói to hơn hoặc gõ trực tiếp vào ô nhắn tin.');
+        mqttServiceRef.current?.broadcastUnlock();
+      }
       return;
     }
 
-    if (audioRecorderRef.current) {
-      const [recordResult, clientTranscript] = await Promise.all([
-        audioRecorderRef.current.stop(),
-        speechRecognitionHelper.stop(),
-      ]);
+    // 2. Fallback: MediaRecorder audio processing
+    if (audioRecorderRef.current && audioRecorderRef.current.isRecording()) {
+      const recordResult = await audioRecorderRef.current.stop();
+      if (mediaStreamRef.current) {
+        mediaStreamRef.current.getTracks().forEach((track) => track.stop());
+        mediaStreamRef.current = null;
+      }
 
-      let textToUse = (clientTranscript || speechRecognitionHelper.getCurrentTranscript() || liveTranscript || '').trim();
-
-      if (textToUse) {
-        await processAndTranslateAudio(null, textToUse);
-      } else if (recordResult) {
+      if (recordResult) {
         await processAndTranslateAudio(recordResult, '');
       } else {
         showErrorToast('Chưa ghi nhận được âm thanh. Hãy bấm và nói to, rõ ràng hơn.');
         mqttServiceRef.current?.broadcastUnlock();
       }
     }
+  };
+
+  // Confirm review and translate
+  const handleConfirmReview = async (text: string) => {
+    setReviewText('');
+    await processAndTranslateAudio(null, text.trim());
+  };
+
+  const handleDismissReview = () => {
+    setReviewText('');
   };
 
   // Manual TTS Playback on message click
@@ -617,6 +608,9 @@ export const App: React.FC = () => {
         onCancelRecord={handleCancelRecord}
         onSendText={handleSendTextMessage}
         liveTranscript={liveTranscript}
+        reviewText={reviewText}
+        onConfirmSend={handleConfirmReview}
+        onDismissReview={handleDismissReview}
       />
 
       {/* QR Code Modal for Onboarding Partners */}
